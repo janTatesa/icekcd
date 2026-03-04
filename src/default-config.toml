@@ -1,0 +1,11 @@
+# When unset, uses the default iced font
+# font = "Rubik"
+# When set to false, will only show latest comic when you explicitly set is as argument, and otherwise will return to the state where your application was previously
+show_latest_on_startup = true
+process_image_by_default = true
+max_history_size = 20
+[colors]
+primary = "#cba6f7"
+text = "#cdd6f4"
+bg = "#1e1e2e"
+danger = "#f38ba8"

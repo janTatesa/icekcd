@@ -1,0 +1,30 @@
+[package]
+name = "icekcd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.58", features = ["cargo", "derive"] }
+color-eyre = "0.6.5"
+dirs = "6.0.0"
+ego-tree = "0.10.0"
+env_logger = "0.11.8"
+iced = { version = "0.14.0", features = ["smol", "image"] }
+iced_selection = "0.4.0"
+iced_split = "0.1.0"
+image = { version = "0.25.9", default-features = false }
+isahc = "1.7.2"
+log = "0.4.29"
+lucide-icons = "*"
+open = "5.3.3"
+rand = "0.10.0"
+scraper = "0.25.0"
+serde = "1.0.228"
+serde-inline-default = "1.0.1"
+serde_json = "1.0.149"
+smol = "2.0.2"
+toml = "1.0.3"
+
+[features]
+debug = ["iced/debug"]
+hot = ["iced/hot"]
