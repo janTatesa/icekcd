@@ -358,6 +358,7 @@ impl Icekcd {
                                 .on_press(Message::FetchExplanation(kind)),
                             "This comic doesn't have an explanation yet"
                         ]
+                        .align_y(Alignment::Center)
                         .spacing(SPACING),
                     )
                     .center(Length::Fill)
