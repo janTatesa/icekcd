@@ -351,6 +351,12 @@ impl Icekcd {
             Length::Fill,
             Length::Fill,
             |explanation| {
+                if explanation.elements().is_empty() {
+                    return container("This comic doesn't have an explanation yet")
+                        .center(Length::Fill)
+                        .into();
+                }
+
                 let content =
                     self.explanation_inner(explanation.elements(), kind, Modifiers::default());
                 let explanation = container(content).center_x(Length::Fill);
