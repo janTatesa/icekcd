@@ -4,6 +4,7 @@ Features:
 - Adapts image to your theme (optional)
 - Bookmarking & favoriting comics
 - View explainxkcd in the app
+
 Todo:
 - Overview
 - Settings
