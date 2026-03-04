@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use color_eyre::Result;
+use color_eyre::{Result, eyre::OptionExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -35,7 +35,7 @@ pub enum Viewable {
 
 impl State {
     fn path() -> Result<PathBuf> {
-        let mut path = dirs::data_dir().unwrap();
+        let mut path = dirs::data_dir().ok_or_eyre("Cannot find config dir")?;
         path.push("icekcd");
         if !path.exists() {
             fs::create_dir(&path)?;

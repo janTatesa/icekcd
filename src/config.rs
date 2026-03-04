@@ -21,6 +21,12 @@ pub struct Config {
     pub colors: Colors,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        toml::from_str("").unwrap()
+    }
+}
+
 impl Default for Colors {
     fn default() -> Self {
         toml::from_str("").unwrap()
@@ -28,7 +34,7 @@ impl Default for Colors {
 }
 
 #[serde_inline_default]
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Copy)]
 #[serde(deny_unknown_fields)]
 pub struct Colors {
     #[serde_inline_default(color!(0xcba6f7))]

@@ -1,6 +1,7 @@
+use crate::config::Config;
 use crate::explanation::{Description, ExplanationElement, Heading, Modifiers, Span};
 use crate::state::Viewable;
-use crate::{ExplanationKind, FONT_SIZE, Icekcd, Image, Message};
+use crate::{ExplanationKind, FONT_SIZE, Icekcd, Image, ImageHandlesWrapped, Message, Running};
 use iced::widget::Row;
 use iced::{
     Alignment, Color, Element, Font, Length, Shadow, Theme, Vector, border,
@@ -40,10 +41,10 @@ const MAX_IMG_SCALE: f32 = 15.0;
 const SUPERSCRIPT_SIZE: f32 = 12.0;
 const MAX_EXPLANATION_WIDTH: f32 = 700.0;
 
-impl Icekcd {
+impl Running {
     pub fn view(&self) -> Element<'_, Message> {
         let xkcd = self.xkcd();
-        let palette = *self.theme().extended_palette();
+        let palette = self.extended_palette();
         let history_back = Self::button(Icon::ArrowLeft, button::primary).on_press_maybe(
             self.state
                 .history()
@@ -58,6 +59,7 @@ impl Icekcd {
                 .then_some(Message::HistoryNext),
         );
 
+        let font = self.config.font;
         let mut title_font = self.config.font;
         title_font.weight = Weight::Bold;
         let title = rich_text![
@@ -65,10 +67,11 @@ impl Icekcd {
                 .color(palette.secondary.base.color)
                 .font(title_font),
             span(&xkcd.title).font(title_font).link(()),
-            span(" (").color(palette.secondary.base.color),
+            span(" (").color(palette.secondary.base.color).font(font),
             span(format!("{}-{:02}-{:02}", xkcd.year, xkcd.month, xkcd.day))
-                .color(palette.primary.base.color),
-            span(")").color(palette.secondary.base.color)
+                .color(palette.primary.base.color)
+                .font(font),
+            span(")").color(palette.secondary.base.color).font(font)
         ]
         .on_link_click(|_: ()| Message::OpenInBrowser);
         let title = container(title).center_x(Length::Fill);
@@ -106,8 +109,10 @@ impl Icekcd {
             Length::Fill,
             |handles| {
                 if handles.contains_color() && self.processing_enabled(xkcd.num) {
-                    contains_color_notice =
-                        Some("This image contains color. Toggle off processing to view it")
+                    contains_color_notice = Some(
+                        text("This image contains color. Toggle off processing to view it")
+                            .font(font),
+                    )
                 }
 
                 viewer(handles.get(self.processing_enabled(xkcd.num)))
@@ -178,12 +183,15 @@ impl Icekcd {
         let bottom_right_buttons =
             container(row![togle_show_favorites, toggle_favorite].spacing(SPACING))
                 .align_right(Length::Fill);
-        let error = self.error.as_ref().map(|err| text(err).style(text::danger));
-        let alt = container(iced_selection::text(&self.xkcd().alt).center()).center_x(Length::Fill);
-        let interactive_notice = self
-            .xkcd()
-            .is_interactive
-            .then_some("This comic is interactive. Press ctrl-o to open it in browser");
+        let error = self
+            .error
+            .as_ref()
+            .map(|err| text(err).style(text::danger).font(font));
+        let alt = container(iced_selection::text(&self.xkcd().alt).center().font(font))
+            .center_x(Length::Fill);
+        let interactive_notice = self.xkcd().is_interactive.then_some(
+            text("This comic is interactive. Press ctrl-o to open it in browser").font(font),
+        );
 
         let xkcd_view = container(
             column![
@@ -232,7 +240,9 @@ impl Icekcd {
 
                         let title = container(
                             rich_text![
-                                span(format!("{}: ", xkcd.num)).color(palette.secondary.base.color),
+                                span(format!("{}: ", xkcd.num))
+                                    .color(palette.secondary.base.color)
+                                    .font(font),
                                 span(&xkcd.title).font(title_font)
                             ]
                             .on_link_click(never),
@@ -341,6 +351,7 @@ impl Icekcd {
         url: String,
         close_msg: Message,
     ) -> Element<'_, Message> {
+        let font = self.config.font;
         let explanation = self.fetchable(
             match kind {
                 ExplanationKind::Comic => self.explanation.as_ref(),
@@ -356,7 +367,7 @@ impl Icekcd {
                         row![
                             Self::button(Icon::RefreshCw, button::primary)
                                 .on_press(Message::FetchExplanation(kind)),
-                            "This comic doesn't have an explanation yet"
+                            text("This comic doesn't have an explanation yet").font(font)
                         ]
                         .align_y(Alignment::Center)
                         .spacing(SPACING),
@@ -365,8 +376,12 @@ impl Icekcd {
                     .into();
                 }
 
-                let content =
-                    self.explanation_inner(explanation.elements(), kind, Modifiers::default());
+                let content = self.explanation_inner(
+                    explanation.elements(),
+                    kind,
+                    Modifiers::default(),
+                    &explanation.images,
+                );
                 let explanation = container(content).center_x(Length::Fill);
                 widget::scrollable(explanation)
                     .id(kind.id())
@@ -391,7 +406,7 @@ impl Icekcd {
                     ..self.config.font
                 })
                 .link(Link::Url(url))
-                .color(self.theme().palette().primary)
+                .color(self.palette().primary)
         ]
         .on_link_click(Message::LinkClicked);
         let close_button = Self::button(Icon::CircleX, button::primary).on_press(close_msg);
@@ -401,7 +416,7 @@ impl Icekcd {
         ];
 
         let contains_unknown_notice = match &self.explanation {
-            Some(Ok(explanation)) if explanation.contains_unknown => Some(text("This explanation contains elements which icekcd couldn't parse, pwease submit an issue").style(text::danger)),
+            Some(Ok(explanation)) if explanation.contains_unknown => Some(text("This explanation contains elements which icekcd couldn't parse, pwease submit an issue").style(text::danger).font(font)),
             _ => None,
         };
 
@@ -455,22 +470,28 @@ impl Icekcd {
         content: impl IntoIterator<Item = &'a ExplanationElement<'a>>,
         kind: ExplanationKind,
         default_modifiers: Modifiers,
+        images: &'a [(ImageHandlesWrapped, String)],
     ) -> Element<'a, Message> {
+        let font = self.config.font;
         let iter = content.into_iter().map(move |item| match item {
             ExplanationElement::List { numbered, items } => {
                 let numbered_width = FONT_SIZE * ((items.len().ilog10() as f32 / 2.0).ceil() + 1.0);
                 Column::from_iter(items.iter().enumerate().map(|(num, item)| {
                     let start = if *numbered {
                         text!("{}.", num + 1)
+                            .font(font)
                             .align_x(Alignment::End)
                             .width(numbered_width)
                     } else {
-                        text("•")
+                        text("•").font(font)
                     }
-                    .color(self.theme().extended_palette().secondary.base.color);
-                    row![start, self.explanation_inner(item, kind, default_modifiers)]
-                        .spacing(SPACING)
-                        .into()
+                    .color(self.extended_palette().secondary.base.color);
+                    row![
+                        start,
+                        self.explanation_inner(item, kind, default_modifiers, images)
+                    ]
+                    .spacing(SPACING)
+                    .into()
                 }))
                 .into()
             }
@@ -495,13 +516,16 @@ impl Icekcd {
                                     heading: Some(Heading::H6),
                                     ..default_modifiers
                                 },
+                                images,
                             )
                         });
                     table::column(header, move |row| {
                         content
                             .get(&(column, row))
                             .and_then(Option::as_ref)
-                            .map(|cell| self.explanation_inner(cell, kind, default_modifiers))
+                            .map(|cell| {
+                                self.explanation_inner(cell, kind, default_modifiers, images)
+                            })
                     })
                     .width(if column == columns - 1 {
                         Length::FillPortion(3)
@@ -516,12 +540,12 @@ impl Icekcd {
                     .into()
             }
             ExplanationElement::Unknown(html) => {
-                text(html).color(self.theme().palette().danger).into()
+                text(html).color(self.palette().danger).font(font).into()
             }
             ExplanationElement::DescriptionList(descriptions) => {
                 let descriptions = descriptions.iter().map(|Description { head, body }| {
                     let body = body.iter().map(|paragraph| {
-                        self.explanation_inner(paragraph, kind, default_modifiers)
+                        self.explanation_inner(paragraph, kind, default_modifiers, images)
                     });
                     let body = Column::from_iter(body)
                         .spacing(SPACING)
@@ -533,7 +557,8 @@ impl Icekcd {
                             Modifiers {
                                 heading: Some(Heading::H6),
                                 ..default_modifiers
-                            }
+                            },
+                            images
                         ),
                         body
                     ]
@@ -543,14 +568,6 @@ impl Icekcd {
                 Column::from_iter(descriptions).spacing(SPACING).into()
             }
             ExplanationElement::Image { idx, description } => {
-                let images = match kind {
-                    ExplanationKind::Comic => {
-                        &self.explanation.as_ref().unwrap().as_ref().unwrap().images
-                    }
-                    ExplanationKind::Article => {
-                        &self.article.as_ref().unwrap().as_ref().unwrap().images
-                    }
-                };
                 let img = container(self.fetchable(
                     images[*idx].0.as_ref(),
                     "image",
@@ -568,8 +585,13 @@ impl Icekcd {
                 if let Some(description) = description {
                     container(column![
                         container(img).center_x(Length::Fill).center_y(Length::Fill),
-                        container(self.explanation_inner(description, kind, default_modifiers))
-                            .center_x(Length::Fill)
+                        container(self.explanation_inner(
+                            description,
+                            kind,
+                            default_modifiers,
+                            images
+                        ))
+                        .center_x(Length::Fill)
                     ])
                     .padding(SPACING)
                     .style(|theme| container::Style {
@@ -602,7 +624,8 @@ impl Icekcd {
                         Modifiers {
                             italic: true,
                             ..default_modifiers
-                        }
+                        },
+                        images
                     )
                 ]
                 .spacing(5)
@@ -654,10 +677,10 @@ impl Icekcd {
                 (Some(heading), _, _) => heading.font_size(),
                 _ => FONT_SIZE,
             };
-            let weak = self.theme().extended_palette().primary.weak.color;
+            let weak = self.extended_palette().primary.weak.color;
             let color = match (color, &span.link) {
                 (Some(color), _) => color,
-                (_, None) => self.theme().palette().text,
+                (_, None) => self.palette().text,
                 (_, Some(Link::Xkcd(xkcd)))
                     if self.state.has_been_viewed(Viewable::Xkcd(*xkcd)) =>
                 {
@@ -669,7 +692,7 @@ impl Icekcd {
                 {
                     weak
                 }
-                _ => self.theme().palette().primary,
+                _ => self.palette().primary,
             };
 
             iced_selection::span(span.text.to_string())
@@ -719,7 +742,9 @@ impl Icekcd {
             Some(Err(error)) => container(
                 row![
                     Self::button(Icon::RefreshCw, button::primary).on_press(msg),
-                    text!("Failed to fetch {name}: {error}").style(text::danger)
+                    text!("Failed to fetch {name}: {error}")
+                        .style(text::danger)
+                        .font(self.config.font)
                 ]
                 .spacing(SPACING)
                 .align_y(Alignment::Center),
@@ -727,7 +752,7 @@ impl Icekcd {
             .center_x(width)
             .center_y(height)
             .into(),
-            _ => container(text!("Fetching {name}"))
+            _ => container(text!("Fetching {name}").font(self.config.font))
                 .center_x(width)
                 .center_y(height)
                 .into(),
@@ -749,5 +774,25 @@ impl<I: Iterator, const N: usize> Iterator for OptionArrayChunks<I, N> {
         self.0.peek()?;
 
         Some(array::from_fn(|_| self.0.next()))
+    }
+}
+
+impl Icekcd {
+    pub fn view(&self) -> Element<'_, Message> {
+        match self {
+            Icekcd::InitFailure(report, config, _) => container(
+                row![
+                    Running::button(Icon::RefreshCw, button::primary).on_press(Message::Reboot),
+                    text!("Failed to load app: {report}")
+                        .font(config.as_ref().unwrap_or(&Config::default()).font)
+                        .style(text::danger)
+                ]
+                .align_y(Alignment::Center)
+                .spacing(SPACING),
+            )
+            .center(Length::Fill)
+            .into(),
+            Icekcd::Running(running) => running.view(),
+        }
     }
 }

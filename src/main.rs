@@ -14,6 +14,7 @@ use color_eyre::{Result, eyre::OptionExt};
 use iced::{
     Subscription, Task, Theme, clipboard,
     futures::{join, stream},
+    theme::{Palette, palette},
     widget::operation::{AbsoluteOffset, scroll_by, scroll_to},
     window::{self},
 };
@@ -23,7 +24,7 @@ use log::error;
 use lucide_icons::LUCIDE_FONT_BYTES;
 
 use crate::{
-    config::Config,
+    config::{Colors, Config},
     event::handle_iced_event,
     explanation::{Explanation, Link},
     history::HistoryEntry,
@@ -47,88 +48,35 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     env_logger::init();
     let Cli { xkcd: xkcd_locator } = Cli::parse();
-    let config = Config::load()?;
-    let (xkcd, latest_xkcd) = match xkcd_locator {
-        Some(Locator::Number(xkcd)) => {
-            let future = async { join!(Xkcd::get(xkcd), Xkcd::get_latest()) };
-            let (xkcd, latest) = smol::block_on(future);
-            (xkcd?, latest?)
-        }
-        _ => {
-            let xkcd = smol::block_on(Xkcd::get_latest())?;
-            (xkcd.clone(), xkcd)
-        }
-    };
-
-    let open_xkcd = xkcd_locator.is_some() || config.show_latest_on_startup;
-    let state = State::load(xkcd, open_xkcd, config.max_history_size)?;
-    let font = config.font;
-    let boot = move || {
-        let icekcd = Icekcd {
-            latest_xkcd: latest_xkcd.clone(),
-            state: state.clone(),
-            explanation: None,
-            hovered_link: None,
-            error: None,
-            config: config.clone(),
-            image_handles: None,
-            article: None,
-            favorite_images: HashMap::new(),
-        };
-
-        let mut tasks = Vec::from(
-            [
-                Message::FetchImage(icekcd.xkcd().num, Image::Xkcd),
-                Message::FetchExplanation(ExplanationKind::Comic),
-                Message::FetchExplanation(ExplanationKind::Article),
-            ]
-            .map(Task::done),
-        );
-
-        if icekcd.state.show_favorites() {
-            tasks.extend(icekcd.state.favorites().iter().map(|xkcd| {
-                Task::done(Message::FetchImage(
-                    icekcd.xkcd().num,
-                    Image::Favorite(xkcd.clone()),
-                ))
-            }));
-        }
-        let batch = Task::batch(tasks);
-        (icekcd, batch)
-    };
     let icon = Some(window::icon::from_file_data(
         include_bytes!("./icon.png"),
         Some(::image::ImageFormat::Png),
     )?);
-    iced::application(boot, Icekcd::update, Icekcd::view)
-        .theme(Icekcd::theme)
-        .title(Icekcd::title)
-        .subscription(Icekcd::subscription)
-        .scale_factor(Icekcd::scale)
-        .window(window::Settings {
-            icon,
-            ..Default::default()
-        })
-        .default_font(font)
-        .font(LUCIDE_FONT_BYTES)
-        .run()?;
+    iced::application(
+        move || Icekcd::boot(xkcd_locator),
+        Icekcd::update,
+        Icekcd::view,
+    )
+    .theme(Icekcd::theme)
+    .title(Icekcd::title)
+    .subscription(Icekcd::subscription)
+    .scale_factor(Icekcd::scale)
+    .window(window::Settings {
+        icon,
+        ..Default::default()
+    })
+    .font(LUCIDE_FONT_BYTES)
+    .run()?;
     Ok(())
 }
 
 type ImageHandlesWrapped = Option<Result<ImageHandles, String>>;
 type ExplanationWrapped = Option<Result<Explanation, String>>;
 
-#[derive(Debug)]
-struct Icekcd {
-    latest_xkcd: Xkcd,
-    state: State,
-    explanation: ExplanationWrapped,
-    article: ExplanationWrapped,
-    favorite_images: HashMap<u32, ImageHandlesWrapped>,
-    hovered_link: Option<String>,
-    error: Option<String>,
-    config: Config,
-    image_handles: ImageHandlesWrapped,
+#[allow(clippy::large_enum_variant)]
+enum Icekcd {
+    InitFailure(String, Option<Config>, Option<Locator>),
+    Running(Running),
 }
 
 #[derive(Clone, Debug)]
@@ -140,6 +88,8 @@ enum Image {
 
 #[derive(Clone, Debug)]
 enum Message {
+    Reboot,
+
     ToggleProcessImage,
     // Xkcd num is necessary in the case of fetching of an image while comic is switched
     ImageFetched(u32, Image, Vec<u8>),
@@ -218,6 +168,83 @@ impl ExplanationKind {
 
 const FONT_SIZE: f32 = 16.0;
 impl Icekcd {
+    fn boot(locator: Option<Locator>) -> (Self, Task<Message>) {
+        let config = match Config::load() {
+            Ok(config) => config,
+            Err(error) => {
+                return (
+                    Self::InitFailure(error.to_string(), None, locator),
+                    Task::none(),
+                );
+            }
+        };
+        let (xkcd, latest_xkcd) = match locator {
+            Some(Locator::Number(xkcd)) => {
+                let future = async { join!(Xkcd::get(xkcd), Xkcd::get_latest()) };
+                match smol::block_on(future) {
+                    (Err(error), _) | (_, Err(error)) => {
+                        return (
+                            Self::InitFailure(error.to_string(), Some(config), locator),
+                            Task::none(),
+                        );
+                    }
+                    (Ok(xkcd), Ok(latest)) => (xkcd, latest),
+                }
+            }
+            _ => {
+                let xkcd = match smol::block_on(Xkcd::get_latest()) {
+                    Ok(xkcd) => xkcd,
+                    Err(error) => {
+                        return (
+                            Self::InitFailure(error.to_string(), Some(config), locator),
+                            Task::none(),
+                        );
+                    }
+                };
+                (xkcd.clone(), xkcd)
+            }
+        };
+
+        let open_xkcd = locator.is_some() || config.show_latest_on_startup;
+        let state = match State::load(xkcd, open_xkcd, config.max_history_size) {
+            Ok(state) => state,
+            Err(_) => todo!(),
+        };
+
+        let mut tasks = Vec::from(
+            [
+                Message::FetchImage(state.history().current_entry().xkcd.num, Image::Xkcd),
+                Message::FetchExplanation(ExplanationKind::Comic),
+                Message::FetchExplanation(ExplanationKind::Article),
+            ]
+            .map(Task::done),
+        );
+
+        if state.show_favorites() {
+            tasks.extend(state.favorites().iter().map(|xkcd| {
+                Task::done(Message::FetchImage(
+                    state.history().current_entry().xkcd.num,
+                    Image::Favorite(xkcd.clone()),
+                ))
+            }));
+        }
+        let batch = Task::batch(tasks);
+        (
+            Self::Running(Running {
+                latest_xkcd: latest_xkcd.clone(),
+                state: state.clone(),
+                explanation: None,
+                hovered_link: None,
+                error: None,
+                config: config.clone(),
+                image_handles: None,
+                article: None,
+                favorite_images: HashMap::new(),
+            }),
+            batch,
+        )
+    }
+
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::event::listen().filter_map(handle_iced_event),
@@ -238,27 +265,79 @@ impl Icekcd {
     }
 
     fn theme(&self) -> Theme {
+        let Colors {
+            primary,
+            text,
+            bg,
+            danger,
+        } = match self {
+            Icekcd::InitFailure(_, config, _) => {
+                config.as_ref().unwrap_or(&Config::default()).colors
+            }
+            Icekcd::Running(Running { config, .. }) => config.colors,
+        };
         Theme::custom(
             "Custom theme",
             iced::theme::Palette {
-                background: self.config.colors.bg,
-                text: self.config.colors.text,
-                primary: self.config.colors.primary,
-                success: self.config.colors.primary,
-                warning: self.config.colors.danger,
-                danger: self.config.colors.danger,
+                background: bg,
+                text,
+                primary,
+                success: primary,
+                warning: danger,
+                danger,
             },
         )
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
-        self.try_update(message).unwrap_or_else(|err| {
-            self.error = Some(err.to_string());
-            error!("{err}");
-            Task::none()
-        })
+        match self {
+            Icekcd::InitFailure(_, _, locator) => {
+                if let Message::Reboot = message {
+                    let (app, task) = Self::boot(*locator);
+                    *self = app;
+                    task
+                } else {
+                    Task::none()
+                }
+            }
+            Icekcd::Running(running) => running.try_update(message).unwrap_or_else(|err| {
+                running.error = Some(err.to_string());
+                error!("{err}");
+                Task::none()
+            }),
+        }
     }
 
+    fn title(&self) -> String {
+        match self {
+            Icekcd::InitFailure(_, _, _) => "Icekcd".to_string(),
+            Icekcd::Running(running) => {
+                format!("Icekcd - {}: {}", running.xkcd().num, running.xkcd().title)
+            }
+        }
+    }
+
+    fn scale(&self) -> f32 {
+        match self {
+            Icekcd::InitFailure(_, _, _) => 1.0,
+            Icekcd::Running(running) => running.state.scale(),
+        }
+    }
+}
+
+struct Running {
+    latest_xkcd: Xkcd,
+    state: State,
+    explanation: ExplanationWrapped,
+    article: ExplanationWrapped,
+    favorite_images: HashMap<u32, ImageHandlesWrapped>,
+    hovered_link: Option<String>,
+    error: Option<String>,
+    config: Config,
+    image_handles: ImageHandlesWrapped,
+}
+
+impl Running {
     fn try_update(&mut self, message: Message) -> Result<Task<Message>> {
         match message {
             Message::ToggleProcessImage => self
@@ -269,8 +348,8 @@ impl Icekcd {
                 self.state.toggle_show_explanation()?
             }
             Message::ImageFetched(num, image, bytes) if self.xkcd().num == num => {
-                let fg = self.theme().palette().text;
-                let bg = self.theme().palette().background;
+                let fg = self.palette().text;
+                let bg = self.palette().background;
                 if let Some(image_handles) = self.image_handles(image) {
                     let handles = match ::image::load_from_memory(&bytes) {
                         Ok(image) => {
@@ -284,7 +363,7 @@ impl Icekcd {
                 }
             }
             Message::ImageFetched(_, _, _) => {}
-            Message::ToggleBookmark => self.state.toggle_bookmark(self.xkcd().num).unwrap(),
+            Message::ToggleBookmark => self.state.toggle_bookmark(self.xkcd().num)?,
             Message::GoToComic(comic)
                 if (1..=self.latest_xkcd.num).contains(&comic) && self.xkcd().num != comic =>
             {
@@ -584,18 +663,10 @@ impl Icekcd {
                     },
                 ));
             }
+            Message::Reboot => todo!(),
         }
 
         Ok(Task::none())
-    }
-
-    fn title(&self) -> String {
-        let xkcd = self.xkcd();
-        format!("Icekcd - {}: {}", xkcd.num, xkcd.title)
-    }
-
-    fn scale(&self) -> f32 {
-        self.state.scale()
     }
 
     fn current_entry(&self) -> &HistoryEntry {
@@ -657,5 +728,26 @@ impl Icekcd {
                 &mut explanation?.as_mut().ok()?.images[idx].0
             }
         })
+    }
+
+    fn palette(&self) -> Palette {
+        let Colors {
+            primary,
+            text,
+            bg,
+            danger,
+        } = self.config.colors;
+        Palette {
+            background: bg,
+            text,
+            primary,
+            success: primary,
+            warning: danger,
+            danger,
+        }
+    }
+
+    fn extended_palette(&self) -> palette::Extended {
+        palette::Extended::generate(self.palette())
     }
 }
