@@ -352,9 +352,16 @@ impl Icekcd {
             Length::Fill,
             |explanation| {
                 if explanation.elements().is_empty() {
-                    return container("This comic doesn't have an explanation yet")
-                        .center(Length::Fill)
-                        .into();
+                    return container(
+                        row![
+                            Self::button(Icon::RefreshCw, button::primary)
+                                .on_press(Message::FetchExplanation(kind)),
+                            "This comic doesn't have an explanation yet"
+                        ]
+                        .spacing(SPACING),
+                    )
+                    .center(Length::Fill)
+                    .into();
                 }
 
                 let content =
