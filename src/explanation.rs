@@ -17,7 +17,7 @@ use crate::{ExplanationKind, FONT_SIZE, ImageHandlesWrapped};
 // TODO: use yoke
 #[derive(Debug)]
 pub struct Explanation {
-    ptr: NonNull<ManuallyDrop<Html>>,
+    ptr: NonNull<Html>,
     elements: ManuallyDrop<Vec<ExplanationElement<'static>>>,
     pub contains_unknown: bool,
     pub images: Vec<(ImageHandlesWrapped, String)>,
@@ -28,7 +28,7 @@ unsafe impl Sync for Explanation {}
 
 impl Explanation {
     pub fn new(src: &str, kind: ExplanationKind) -> Option<Self> {
-        let html = Box::leak(Box::new(ManuallyDrop::new(Html::parse_document(src))));
+        let html = Box::leak(Box::new(Html::parse_document(src)));
         let ptr = NonNull::from_mut(html);
 
         let mut contains_unknown = false;
@@ -75,7 +75,6 @@ impl Drop for Explanation {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::drop(&mut self.elements);
-            ManuallyDrop::drop(self.ptr.as_mut());
             let ptr = self.ptr.as_ptr() as *mut u8;
             let layout = Layout::new::<Html>();
             alloc::dealloc(ptr, layout)
@@ -576,12 +575,12 @@ fn scrape_element<'a>(
             ..modifiers
         }
         .into(),
-        "u" => Modifiers {
+        "u" | "ins" => Modifiers {
             underline: true,
             ..modifiers
         }
         .into(),
-        "s" | "strike" => Modifiers {
+        "s" | "strike" | "del" => Modifiers {
             strikethrough: true,
             ..modifiers
         }

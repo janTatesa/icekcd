@@ -621,6 +621,9 @@ impl Running {
             }
             Message::OpenInBrowser => open::that(format!("https://xkcd.com/{}", self.xkcd().num))?,
             Message::FetchImage(xkcd, image) => {
+                if let Some(image) = self.image_handles(image.clone()) {
+                    *image = None;
+                }
                 let url = match &image {
                     Image::Xkcd => self.xkcd().img.clone(),
                     Image::Favorite(xkcd) => xkcd.img.clone(),
@@ -649,6 +652,11 @@ impl Running {
             }
             Message::FetchExplanation(kind) => {
                 let num = self.xkcd().num;
+                match kind {
+                    ExplanationKind::Comic => self.explanation = None,
+                    ExplanationKind::Article => self.article = None,
+                };
+
                 let explanation_url = match kind {
                     ExplanationKind::Comic => format!("https://explainxkcd.com/{num}"),
                     ExplanationKind::Article => {
