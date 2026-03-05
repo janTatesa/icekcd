@@ -26,19 +26,17 @@ use std::iter::Peekable;
 use std::ops::Not;
 
 use crate::explanation::Link;
-fn shadow() -> Shadow {
-    Shadow {
-        color: Color::BLACK.scale_alpha(0.5),
-        offset: Vector::ZERO,
-        blur_radius: 8.0,
-    }
-}
+const SHADOW: Shadow = Shadow {
+    color: Color::BLACK.scale_alpha(0.5),
+    offset: Vector::ZERO,
+    blur_radius: 8.0,
+};
 
 const SPACING: f32 = 5.0;
 const BORDER_RADIUS: f32 = 2.0;
 const BORDER_WIDTH: f32 = 2.0;
 const MAX_IMG_SCALE: f32 = 15.0;
-const SUPERSCRIPT_SIZE: f32 = 12.0;
+const SMOL_SIZE: f32 = 12.0;
 const MAX_EXPLANATION_WIDTH: f32 = 700.0;
 
 impl Running {
@@ -280,7 +278,7 @@ impl Running {
                                 })
                                 .width(BORDER_WIDTH)
                                 .rounded(BORDER_RADIUS),
-                                shadow: shadow(),
+                                shadow: SHADOW,
                                 snap: true,
                             })
                             .on_press(Message::GoToComic(xkcd.num))
@@ -323,7 +321,7 @@ impl Running {
                     border: border::color(theme.extended_palette().secondary.base.color)
                         .width(BORDER_WIDTH)
                         .rounded(BORDER_RADIUS),
-                    shadow: shadow(),
+                    shadow: SHADOW,
                     snap: true,
                 })
                 .padding(SPACING),
@@ -433,7 +431,7 @@ impl Running {
                         border: border::rounded(BORDER_RADIUS)
                             .width(BORDER_WIDTH)
                             .color(theme.extended_palette().secondary.base.color),
-                        shadow: shadow(),
+                        shadow: SHADOW,
                         background: Some(theme.palette().background.into()),
                         ..Default::default()
                     })
@@ -452,7 +450,7 @@ impl Running {
                         border: border::color(theme.extended_palette().secondary.base.color)
                             .width(BORDER_WIDTH)
                             .rounded(BORDER_RADIUS),
-                        shadow: shadow(),
+                        shadow: SHADOW,
                         snap: true,
                     })
                     .padding(SPACING)
@@ -599,7 +597,7 @@ impl Running {
                         border: border::rounded(BORDER_RADIUS)
                             .width(BORDER_WIDTH)
                             .color(theme.extended_palette().secondary.base.color),
-                        shadow: shadow(),
+                        shadow: SHADOW,
                         background: Some(theme.palette().background.into()),
                         ..Default::default()
                     })
@@ -650,7 +648,7 @@ impl Running {
                 italic,
                 big,
                 underline,
-                superscript,
+                small,
                 code,
                 color,
                 heading,
@@ -671,9 +669,9 @@ impl Running {
                 font.style = font::Style::Italic
             }
 
-            let size = match (heading, big, superscript) {
+            let size = match (heading, big, small) {
                 (_, true, _) => FONT_SIZE * 2.0,
-                (_, _, true) => SUPERSCRIPT_SIZE,
+                (_, _, true) => SMOL_SIZE,
                 (Some(heading), _, _) => heading.font_size(),
                 _ => FONT_SIZE,
             };
@@ -721,7 +719,7 @@ impl Running {
         button(content)
             .style(move |theme, status| {
                 let mut style = style(theme, status);
-                style.shadow = shadow();
+                style.shadow = SHADOW;
                 style.border.radius = BORDER_RADIUS.into();
                 style
             })

@@ -9,9 +9,9 @@ color-eyre = "0.6.5"
 dirs = "6.0.0"
 ego-tree = "0.10.0"
 env_logger = "0.11.8"
-iced = { version = "0.14.0", features = ["smol", "image"] }
-iced_selection = "0.4.0"
-iced_split = "0.1.0"
+iced = { git = "https://github.com/iced-rs/iced", branch = "master", version = "0.15.0-dev", features = ["image"] }
+iced_selection = { git ="https://git.sr.ht/~pml68/iced_selection", branch = "feat/ellipsis" }
+iced_split = { git = "https://github.com/edwloef/iced_split", version = "0.2.0-dev" }
 image = { version = "0.25.9", default-features = false }
 isahc = "1.7.2"
 log = "0.4.29"
@@ -27,4 +27,6 @@ toml = "1.0.3"
 
 [features]
 debug = ["iced/debug"]
-hot = ["iced/hot"]
+
+[patch.crates-io]
+iced_core = {git = "https://github.com/iced-rs/iced", branch = "master"}

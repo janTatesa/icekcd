@@ -145,9 +145,9 @@ pub struct Modifiers {
     pub italic: bool,
     pub big: bool,
     pub underline: bool,
-    pub superscript: bool,
     pub code: bool,
     pub list: bool,
+    pub small: bool,
     pub heading: Option<Heading>,
     pub color: Option<Color>,
 }
@@ -161,11 +161,11 @@ impl BitOr for Modifiers {
             italic: self.italic | rhs.italic,
             big: self.big | rhs.big,
             underline: self.underline | rhs.underline,
-            superscript: self.superscript | rhs.superscript,
             code: self.code | rhs.code,
             heading: self.heading.or(rhs.heading),
             color: self.color.or(rhs.color),
             list: self.list | rhs.list,
+            small: self.small | rhs.small,
         }
     }
 }
@@ -573,11 +573,6 @@ fn scrape_element<'a>(
             ..modifiers
         }
         .into(),
-        "sup" => Modifiers {
-            superscript: true,
-            ..modifiers
-        }
-        .into(),
         "u" => Modifiers {
             underline: true,
             ..modifiers
@@ -585,6 +580,11 @@ fn scrape_element<'a>(
         .into(),
         "big" => Modifiers {
             big: true,
+            ..modifiers
+        }
+        .into(),
+        "sup" | "sub" | "small" => Modifiers {
+            small: true,
             ..modifiers
         }
         .into(),

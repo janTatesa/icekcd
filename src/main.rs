@@ -12,7 +12,8 @@ use std::{collections::HashMap, f32, iter, time::Duration};
 use clap::Parser;
 use color_eyre::{Result, eyre::OptionExt};
 use iced::{
-    Subscription, Task, Theme, clipboard,
+    Subscription, Task, Theme,
+    clipboard::{self, Content, Kind},
     futures::{join, stream},
     theme::{Palette, palette},
     widget::operation::{AbsoluteOffset, scroll_by, scroll_to},
@@ -395,8 +396,32 @@ impl Running {
             }
             Message::ReloadState => self.state.reload()?,
             Message::Paste => {
-                return Ok(clipboard::read().map(|pasted| {
-                    match pasted.as_deref().and_then(Xkcd::parse_locator) {
+                return Ok(clipboard::read(Kind::Text).map(|pasted| {
+                    let Content::Text(pasted) = (match &pasted {
+                        Ok(pasted) => &**pasted,
+                        Err(error) => {
+                            return Message::Error(
+                                match error {
+                                    clipboard::Error::ClipboardUnavailable => {
+                                        "Clipboard unavailable"
+                                    }
+                                    clipboard::Error::ClipboardOccupied => "Clipboard occupied",
+                                    clipboard::Error::ContentNotAvailable => {
+                                        "Content not available"
+                                    }
+                                    clipboard::Error::ConversionFailure => "Conversion failure",
+                                    clipboard::Error::Unknown { description } => {
+                                        description.as_str()
+                                    }
+                                }
+                                .to_string(),
+                            );
+                        }
+                    }) else {
+                        return Message::Noop;
+                    };
+
+                    match Xkcd::parse_locator(pasted) {
                         Some(Locator::Latest) => Message::GoToLatest,
                         Some(Locator::Number(num)) => Message::GoToComic(num),
                         None => Message::Noop,
@@ -406,7 +431,29 @@ impl Running {
             Message::Noop => {}
             Message::Copy => {
                 let num = self.xkcd().num;
-                return Ok(clipboard::write(format!("https://xkcd.com/{num}")));
+                return Ok(
+                    clipboard::write(format!("https://xkcd.com/{num}")).map(
+                        |result| match result {
+                            Ok(_) => Message::Noop,
+                            Err(error) => Message::Error(
+                                match &error {
+                                    clipboard::Error::ClipboardUnavailable => {
+                                        "Clipboard unavailable"
+                                    }
+                                    clipboard::Error::ClipboardOccupied => "Clipboard occupied",
+                                    clipboard::Error::ContentNotAvailable => {
+                                        "Content not available"
+                                    }
+                                    clipboard::Error::ConversionFailure => "Conversion failure",
+                                    clipboard::Error::Unknown { description } => {
+                                        description.as_str()
+                                    }
+                                }
+                                .to_string(),
+                            ),
+                        },
+                    ),
+                );
             }
             Message::ExplanationFetched(num, kind, explanation) if num == self.xkcd().num => {
                 let explanation = Explanation::new(&explanation, kind).ok_or_else(|| {
