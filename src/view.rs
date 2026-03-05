@@ -652,6 +652,7 @@ impl Running {
                 code,
                 color,
                 heading,
+                strikethrough,
                 ..
             } = default_modifiers | span.modifiers;
 
@@ -697,6 +698,7 @@ impl Running {
                 .font(font)
                 .color(color)
                 .underline(underline)
+                .strikethrough(strikethrough)
                 .size(size)
                 .link_maybe(span.link.clone())
         });

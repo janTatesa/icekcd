@@ -17,7 +17,7 @@ use crate::{ExplanationKind, FONT_SIZE, ImageHandlesWrapped};
 // TODO: use yoke
 #[derive(Debug)]
 pub struct Explanation {
-    ptr: NonNull<Html>,
+    ptr: NonNull<ManuallyDrop<Html>>,
     elements: ManuallyDrop<Vec<ExplanationElement<'static>>>,
     pub contains_unknown: bool,
     pub images: Vec<(ImageHandlesWrapped, String)>,
@@ -28,7 +28,7 @@ unsafe impl Sync for Explanation {}
 
 impl Explanation {
     pub fn new(src: &str, kind: ExplanationKind) -> Option<Self> {
-        let html = Box::leak(Box::new(Html::parse_document(src)));
+        let html = Box::leak(Box::new(ManuallyDrop::new(Html::parse_document(src))));
         let ptr = NonNull::from_mut(html);
 
         let mut contains_unknown = false;
@@ -75,6 +75,7 @@ impl Drop for Explanation {
     fn drop(&mut self) {
         unsafe {
             ManuallyDrop::drop(&mut self.elements);
+            ManuallyDrop::drop(self.ptr.as_mut());
             let ptr = self.ptr.as_ptr() as *mut u8;
             let layout = Layout::new::<Html>();
             alloc::dealloc(ptr, layout)
@@ -148,6 +149,7 @@ pub struct Modifiers {
     pub code: bool,
     pub list: bool,
     pub small: bool,
+    pub strikethrough: bool,
     pub heading: Option<Heading>,
     pub color: Option<Color>,
 }
@@ -166,6 +168,7 @@ impl BitOr for Modifiers {
             color: self.color.or(rhs.color),
             list: self.list | rhs.list,
             small: self.small | rhs.small,
+            strikethrough: self.strikethrough | rhs.strikethrough,
         }
     }
 }
@@ -563,7 +566,7 @@ fn scrape_element<'a>(
             }
             .into()
         }
-        "i" | "q" => Modifiers {
+        "i" | "q" | "em" => Modifiers {
             italic: true,
             ..modifiers
         }
@@ -578,6 +581,11 @@ fn scrape_element<'a>(
             ..modifiers
         }
         .into(),
+        "s" | "strike" => Modifiers {
+            strikethrough: true,
+            ..modifiers
+        }
+        .into(),
         "big" => Modifiers {
             big: true,
             ..modifiers
@@ -588,7 +596,7 @@ fn scrape_element<'a>(
             ..modifiers
         }
         .into(),
-        "code" => Modifiers {
+        "pre" | "code" => Modifiers {
             code: true,
             ..modifiers
         }
@@ -619,7 +627,7 @@ fn scrape_element<'a>(
             }
             .into()
         }
-        "br" => ScrapeElementOut::Continue,
+        "tt" | "hr" | "br" => ScrapeElementOut::Continue,
         "a" if element.has_class("image", CaseSensitivity::CaseSensitive) => {
             let img = node
                 .children()
@@ -643,6 +651,12 @@ fn scrape_element<'a>(
             }
             .into()
         }
+        "abbr" => Span {
+            text: element.attr("title")?.into(),
+            modifiers,
+            link: None,
+        }
+        .into(),
         "a" => {
             let mut text = String::new();
 
@@ -708,11 +722,13 @@ mod tests {
     #[test]
     fn test_scraping() {
         let max = smol::block_on(Xkcd::get_latest()).unwrap().num;
-        for num in 1..=max {
-            println!("Scraping {num}");
+        let start: u32 = option_env!("TEST_START").unwrap_or("1").parse().unwrap();
+        for num in start..=max {
+            println!("Fetching {num}");
             let mut response = isahc::get(format!("https://explainxkcd.com/{num}")).unwrap();
             assert!(!(response.status().is_client_error() || response.status().is_server_error()));
             let src = response.text().unwrap();
+            println!("Scraping {num}");
             assert!(
                 !Explanation::new(&src, ExplanationKind::Comic)
                     .unwrap()
