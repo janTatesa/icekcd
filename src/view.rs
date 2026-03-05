@@ -1,7 +1,8 @@
-use crate::config::Config;
+use crate::config::{Colors, Config};
 use crate::explanation::{Description, ExplanationElement, Heading, Modifiers, Span};
 use crate::state::Viewable;
 use crate::{ExplanationKind, FONT_SIZE, Icekcd, Image, ImageHandlesWrapped, Message, Running};
+use iced::theme::{Palette, palette};
 use iced::widget::Row;
 use iced::{
     Alignment, Color, Element, Font, Length, Shadow, Theme, Vector, border,
@@ -766,6 +767,27 @@ impl Running {
     fn processing_enabled(&self, comic: u32) -> bool {
         self.state
             .processing_enabled(self.config.process_image_by_default, comic)
+    }
+
+    fn palette(&self) -> Palette {
+        let Colors {
+            primary,
+            text,
+            bg,
+            danger,
+        } = self.config.colors;
+        Palette {
+            background: bg,
+            text,
+            primary,
+            success: primary,
+            warning: danger,
+            danger,
+        }
+    }
+
+    fn extended_palette(&self) -> palette::Extended {
+        palette::Extended::generate(self.palette())
     }
 }
 

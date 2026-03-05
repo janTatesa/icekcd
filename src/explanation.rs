@@ -38,7 +38,11 @@ impl Explanation {
             ExplanationKind::Comic => {
                 let elements = html
                     .select(&Selector::parse("#Explanation").unwrap())
-                    .next()?
+                    .next()
+                    .or_else(|| {
+                        html.select(&Selector::parse("#Eggsplanation").unwrap())
+                            .next()
+                    })?
                     .parent()?
                     .next_siblings()
                     .take_while(|node| {
@@ -483,12 +487,12 @@ fn scrape_element<'a>(
                     let cell_content =
                         scrape_elements(cell.children(), contains_unknown, images, modifiers);
                     let colspan = match cell.attr("colspan") {
-                        Some(span) => span.parse().ok()?,
+                        Some(span) => span.strip_suffix(";").unwrap_or(span).parse().ok()?,
                         None => 1,
                     };
 
                     let rowspan = match cell.attr("rowspan") {
-                        Some(span) => span.parse().ok()?,
+                        Some(span) => span.strip_suffix(";").unwrap_or(span).parse().ok()?,
                         None => 1,
                     };
 
@@ -568,7 +572,7 @@ fn scrape_element<'a>(
             }
             .into()
         }
-        "i" | "q" | "em" => Modifiers {
+        "i" | "q" | "em" | "var" => Modifiers {
             italic: true,
             ..modifiers
         }
@@ -629,7 +633,7 @@ fn scrape_element<'a>(
             }
             .into()
         }
-        "tt" | "hr" | "br" => ScrapeElementOut::Continue,
+        "tt" | "hr" | "br" | "wbr" => ScrapeElementOut::Continue,
         "a" if element.has_class("image", CaseSensitivity::CaseSensitive) => {
             let img = node
                 .children()

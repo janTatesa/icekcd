@@ -6,7 +6,7 @@ use iced::{
 
 use crate::Message;
 
-pub(super) fn handle_iced_event(event: Event) -> Option<Message> {
+pub fn handle_iced_event(event: Event) -> Option<Message> {
     Some(match event {
         Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
             return handle_key(key, modifiers);
@@ -18,7 +18,7 @@ pub(super) fn handle_iced_event(event: Event) -> Option<Message> {
     })
 }
 
-pub fn handle_key(key: Key, modifiers: Modifiers) -> Option<Message> {
+fn handle_key(key: Key, modifiers: Modifiers) -> Option<Message> {
     use Key as K;
     use Message as MSG;
     use Modifiers as M;
