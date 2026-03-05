@@ -44,7 +44,7 @@ impl Explanation {
                     .take_while(|node| {
                         node.value()
                             .as_element()
-                            .is_none_or(|elem| elem.name() != "h2")
+                            .is_none_or(|elem| elem.name() != "h2" && elem.name() != "h1")
                     });
 
                 scrape_elements(elements, &mut contains_unknown, &mut images, modifiers)
@@ -262,12 +262,12 @@ fn scrape_elements<'a>(
                 })
             }
             None => {
-                *contains_unknown = true;
                 elements.push(ExplanationElement::Unknown(match ElementRef::wrap(node) {
                     Some(elem) => elem.html().into(),
                     _ if node.value().is_comment() => continue,
                     None => format!("{:?}", node.value()).into(),
-                }))
+                }));
+                *contains_unknown = true;
             }
         }
     }
@@ -528,27 +528,30 @@ fn scrape_element<'a>(
                 .has_class("thumb", CaseSensitivity::CaseSensitive) =>
         {
             let mut children = contents.next()?.children();
-            let img = children
-                .next()?
-                .children()
-                .find_map(|node| node.value().as_element())?
-                .attr("src")?;
+            let anchor = children.find_map(ElementRef::wrap)?;
+            let img = anchor.attr("href").or_else(|| {
+                let attr = anchor
+                    .children()
+                    .next()?
+                    .value()
+                    .as_element()?
+                    .attr("src")?;
+                Some(attr)
+            })?;
             let img_url = format!("https://explainxkcd.com{img}");
             images.push((None, img_url));
-            let contents = children
-                .find(|child| child.value().is_element())?
-                .children()
-                .filter(|node| {
-                    node.value().as_element().is_none_or(|elem| {
-                        !elem.has_class("magnify", CaseSensitivity::CaseSensitive)
-                    })
+            let description = children
+                .find(|child| child.value().is_element())
+                .map(|content| {
+                    let content = content.children().filter(|node| {
+                        node.value().as_element().is_none_or(|elem| {
+                            !elem.has_class("magnify", CaseSensitivity::CaseSensitive)
+                        })
+                    });
+
+                    scrape_elements(content, contains_unknown, images, modifiers)
                 });
-            let description = Some(scrape_elements(
-                contents,
-                contains_unknown,
-                images,
-                modifiers,
-            ));
+
             ExplanationElement::Image {
                 idx: images.len() - 1,
                 description,
@@ -603,7 +606,7 @@ fn scrape_element<'a>(
         "span" if element.has_class("mw-editsection", CaseSensitivity::CaseSensitive) => {
             ScrapeElementOut::Continue
         }
-        "span" | "font" | "p" | "cite" | "li" | "div" => {
+        "span" | "font" | "p" | "cite" | "li" | "div" | "center" => {
             fn parse_rgb_color(str: &str) -> Option<Color> {
                 let mut iter = str
                     .trim()
@@ -728,11 +731,11 @@ mod tests {
             assert!(!(response.status().is_client_error() || response.status().is_server_error()));
             let src = response.text().unwrap();
             println!("Scraping {num}");
-            assert!(
-                !Explanation::new(&src, ExplanationKind::Comic)
-                    .unwrap()
-                    .contains_unknown
-            )
+            let explanation = Explanation::new(&src, ExplanationKind::Comic).unwrap();
+            if explanation.contains_unknown {
+                dbg!(&explanation);
+                panic!();
+            }
         }
     }
 }

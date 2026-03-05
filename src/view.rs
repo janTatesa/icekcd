@@ -498,6 +498,10 @@ impl Running {
                 columns,
                 rows,
             } => {
+                if *rows == 0 || *columns == 0 {
+                    return space().into();
+                }
+
                 let rows = (1..*rows).filter(|row| {
                     (0..*columns).any(|col| content.get(&(col, *row)).is_some_and(Option::is_some))
                 });
@@ -793,6 +797,11 @@ impl Icekcd {
             .center(Length::Fill)
             .into(),
             Icekcd::Running(running) => running.view(),
+            Icekcd::Starting(config, _) => container(
+                text!("Starting").font(config.as_ref().unwrap_or(&Config::default()).font),
+            )
+            .center(Length::Fill)
+            .into(),
         }
     }
 }
