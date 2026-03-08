@@ -1,11 +1,12 @@
 use iced::{Color, widget::image::Handle};
-use image::{DynamicImage, EncodableLayout, ImageBuffer, Pixel, Rgb, Rgba};
+use image::{EncodableLayout, ImageBuffer, Pixel, Rgb, Rgba};
 use std::{array, mem};
+use yanet::Result;
 
-pub fn process_image(original: DynamicImage, mut fg: Color, mut bg: Color) -> ImageHandles {
+pub fn process_image(encoded: Vec<u8>, mut fg: Color, mut bg: Color) -> Result<ImageHandles> {
     let mut dark_pixels = 0;
     let mut bright_pixels = 0;
-    let original = original.into_rgba8();
+    let original = image::load_from_memory(&encoded)?.into_rgba8();
     let mut contains_color = false;
     for pixel in original.pixels() {
         match pixel.0 {
@@ -52,16 +53,18 @@ pub fn process_image(original: DynamicImage, mut fg: Color, mut bg: Color) -> Im
         }
     });
 
-    ImageHandles {
+    Ok(ImageHandles {
         processed: Handle::from_rgba(width, height, processed.as_bytes().to_vec()),
         original: Handle::from_rgba(width, height, original.as_bytes().to_vec()),
         contains_color,
-    }
+        encoded,
+    })
 }
 
 #[derive(Debug, Clone)]
 pub struct ImageHandles {
     processed: Handle,
+    encoded: Vec<u8>,
     original: Handle,
     contains_color: bool,
 }
@@ -73,6 +76,10 @@ impl ImageHandles {
         } else {
             &self.original
         }
+    }
+
+    pub fn encoded(&self) -> &[u8] {
+        &self.encoded
     }
 
     pub fn contains_color(&self) -> bool {

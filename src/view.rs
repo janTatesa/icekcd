@@ -1,7 +1,7 @@
 use crate::config::{Colors, Config};
 use crate::explanation::{Description, ExplanationElement, Heading, Modifiers, Span};
 use crate::state::Viewable;
-use crate::{ExplanationKind, FONT_SIZE, Icekcd, Image, ImageHandlesWrapped, Message, Running};
+use crate::{ExplanationKind, FONT_SIZE, Icekcd, ImageHandlesWrapped, ImageKind, Message, Running};
 use iced::theme::{Palette, palette};
 use iced::widget::Row;
 use iced::{
@@ -103,7 +103,7 @@ impl Running {
         let image: Element<'_, _> = self.fetchable(
             self.image_handles.as_ref(),
             "image",
-            Message::FetchImage(self.xkcd().num, Image::Xkcd),
+            Message::FetchImage(self.xkcd().num, ImageKind::Xkcd),
             Length::Fill,
             Length::Fill,
             |handles| {
@@ -250,7 +250,7 @@ impl Running {
                         let content = self.fetchable(
                             self.favorite_images.get(&xkcd.num).and_then(Option::as_ref),
                             "image",
-                            Message::FetchImage(self.xkcd().num, Image::Favorite(xkcd.clone())),
+                            Message::FetchImage(self.xkcd().num, ImageKind::Favorite(xkcd.clone())),
                             Length::FillPortion(1),
                             Length::Fixed(SPACING * 100.0),
                             |img| {
@@ -574,7 +574,7 @@ impl Running {
                 let img = container(self.fetchable(
                     images[*idx].0.as_ref(),
                     "image",
-                    Message::FetchImage(self.xkcd().num, Image::Explanation(kind, *idx)),
+                    Message::FetchImage(self.xkcd().num, ImageKind::Explanation(kind, *idx)),
                     MAX_EXPLANATION_WIDTH.into(),
                     (MAX_EXPLANATION_WIDTH / 2.0).into(),
                     |handles| {

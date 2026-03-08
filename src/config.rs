@@ -1,4 +1,5 @@
-use color_eyre::Result;
+use yanet::Result;
+
 use iced::{Color, Font, color};
 use serde::{Deserialize, Deserializer, de};
 use serde_inline_default::serde_inline_default;

@@ -1,16 +1,16 @@
-use std::{f32, iter};
+use std::{f32, fs, iter, path::PathBuf};
 
-use color_eyre::Result;
 use iced::{
     Task,
     clipboard::{self, Content, Kind},
     widget::operation::{AbsoluteOffset, scroll_by, scroll_to},
 };
+use yanet::{OptionExt, Result};
 
 use isahc::AsyncReadResponseExt;
 
 use crate::{
-    ExplanationKind, FONT_SIZE, Image, ImageHandlesWrapped, Message, Running,
+    ExplanationKind, FONT_SIZE, ImageHandlesWrapped, ImageKind, Message, Running,
     explanation::{Explanation, Link},
     history::HistoryEntry,
     image::process_image,
@@ -30,33 +30,38 @@ impl Running {
             Message::ImageFetched(num, image, bytes) if self.xkcd().num == num => {
                 let fg = self.config.colors.text;
                 let bg = self.config.colors.bg;
-                if let Some(image_handles) = self.image_handles(image) {
-                    let handles = match ::image::load_from_memory(&bytes) {
-                        Ok(image) => {
-                            let handles = process_image(image, fg, bg);
-                            Ok(handles)
-                        }
-                        Err(report) => Err(report.to_string()),
-                    };
 
+                if let Some(image_handles) = self.image_handles(image.clone()) {
+                    let handles =
+                        process_image(bytes.clone(), fg, bg).map_err(|err| err.to_string());
                     *image_handles = Some(handles);
+                }
+
+                if self.save_on_fetch
+                    && let ImageKind::Xkcd = image
+                {
+                    fs::write(Self::cache_path(num)?, bytes)?;
+                    self.save_on_fetch = false;
                 }
             }
             Message::ImageFetched(_, _, _) => {}
             Message::ToggleBookmark => self.state.toggle_bookmark(self.xkcd().num)?,
-            Message::GoToComic(comic)
-                if (1..=self.latest_xkcd.num).contains(&comic) && self.xkcd().num != comic =>
-            {
-                return Ok(self.open_comic(comic));
+            Message::GoToComic(comic) => {
+                if self.state.show_favorites() {
+                    self.state.toggle_show_favorites()?
+                }
+
+                if (1..=self.latest_xkcd.num).contains(&comic) && self.xkcd().num != comic {
+                    return Ok(self.open_comic(comic));
+                }
             }
-            Message::GoToComic(_) => {}
             Message::GoToLatest => {
                 self.state
                     .open_xkcd(self.latest_xkcd.clone(), self.config.max_history_size)?;
                 self.on_comic_switch()?;
                 return Ok(Task::batch(
                     [
-                        Message::FetchImage(self.xkcd().num, Image::Xkcd),
+                        Message::FetchImage(self.xkcd().num, ImageKind::Xkcd),
                         Message::FetchExplanation(ExplanationKind::Comic),
                     ]
                     .map(Task::done),
@@ -142,7 +147,7 @@ impl Running {
                 let task = match &explanation {
                     Ok(explanation) => Task::batch(iter::once(scroll_to).chain(
                         (0..explanation.images.len()).map(|idx| {
-                            Task::done(Message::FetchImage(num, Image::Explanation(kind, idx)))
+                            Task::done(Message::FetchImage(num, ImageKind::Explanation(kind, idx)))
                         }),
                     )),
                     Err(_) => Task::none(),
@@ -206,7 +211,7 @@ impl Running {
                 };
 
                 let msgs = [
-                    Message::FetchImage(self.xkcd().num, Image::Xkcd),
+                    Message::FetchImage(self.xkcd().num, ImageKind::Xkcd),
                     Message::FetchExplanation(ExplanationKind::Comic),
                     Message::FetchExplanation(ExplanationKind::Article),
                 ]
@@ -232,7 +237,7 @@ impl Running {
                 };
 
                 let msgs = [
-                    Message::FetchImage(self.xkcd().num, Image::Xkcd),
+                    Message::FetchImage(self.xkcd().num, ImageKind::Xkcd),
                     Message::FetchExplanation(ExplanationKind::Comic),
                     Message::FetchExplanation(ExplanationKind::Article),
                 ]
@@ -278,7 +283,7 @@ impl Running {
                 self.state.open_xkcd(xkcd, self.config.max_history_size)?;
                 self.on_comic_switch()?;
                 return Ok(Task::batch([
-                    Task::done(Message::FetchImage(self.xkcd().num, Image::Xkcd)),
+                    Task::done(Message::FetchImage(self.xkcd().num, ImageKind::Xkcd)),
                     Task::done(Message::FetchExplanation(ExplanationKind::Comic)),
                 ]));
             }
@@ -299,14 +304,22 @@ impl Running {
                 return Ok(scroll_by(self.scrollable_id(), offset));
             }
             Message::OpenInBrowser => open::that(format!("https://xkcd.com/{}", self.xkcd().num))?,
-            Message::FetchImage(xkcd, image) => {
+            Message::FetchImage(current_xkcd, image) => {
+                if let ImageKind::Favorite(xkcd) = &image {
+                    let path = Self::cache_path(xkcd.num)?;
+                    if path.exists() {
+                        let bytes = fs::read(path)?;
+                        return self.try_update(Message::ImageFetched(current_xkcd, image, bytes));
+                    }
+                }
+
                 if let Some(image) = self.image_handles(image.clone()) {
                     *image = None;
                 }
                 let url = match &image {
-                    Image::Xkcd => self.xkcd().img.clone(),
-                    Image::Favorite(xkcd) => xkcd.img.clone(),
-                    Image::Explanation(explanation_kind, idx) => {
+                    ImageKind::Xkcd => self.xkcd().img.clone(),
+                    ImageKind::Favorite(xkcd) => xkcd.img.clone(),
+                    ImageKind::Explanation(explanation_kind, idx) => {
                         let Some(Ok(explanation)) = (match explanation_kind {
                             ExplanationKind::Comic => &self.explanation,
                             ExplanationKind::Article => &self.article,
@@ -321,11 +334,11 @@ impl Running {
                 let image2 = image.clone();
                 return Ok(Task::future(async move {
                     let bytes = Xkcd::request(&url).await?.bytes().await?;
-                    Ok(Message::ImageFetched(xkcd, image, bytes))
+                    Ok(Message::ImageFetched(current_xkcd, image, bytes))
                 })
                 .map(move |res: Result<_>| {
                     res.unwrap_or_else(|err| {
-                        Message::ImageFetchError(xkcd, image2.clone(), err.to_string())
+                        Message::ImageFetchError(current_xkcd, image2.clone(), err.to_string())
                     })
                 }));
             }
@@ -370,7 +383,7 @@ impl Running {
                         if !self.favorite_images.contains_key(&xkcd.num) {
                             Task::done(Message::FetchImage(
                                 self.xkcd().num,
-                                Image::Favorite(xkcd.clone()),
+                                ImageKind::Favorite(xkcd.clone()),
                             ))
                         } else {
                             Task::none()
@@ -378,7 +391,18 @@ impl Running {
                     })));
                 }
             }
-            Message::ToggleFavorite => self.state.toggle_favorite()?,
+            Message::ToggleFavorite => {
+                self.state.toggle_favorite()?;
+                if self.state.favorites().contains(self.xkcd()) {
+                    if let Some(Ok(handles)) = &self.image_handles {
+                        fs::write(Self::cache_path(self.xkcd().num)?, handles.encoded())?;
+                    } else {
+                        self.save_on_fetch = true;
+                    }
+                } else {
+                    fs::remove_file(Self::cache_path(self.xkcd().num)?)?;
+                }
+            }
             Message::ScrollToStart => {
                 return Ok(scroll_to(
                     self.scrollable_id(),
@@ -450,11 +474,11 @@ impl Running {
         }
     }
 
-    fn image_handles(&mut self, image: Image) -> Option<&mut ImageHandlesWrapped> {
+    fn image_handles(&mut self, image: ImageKind) -> Option<&mut ImageHandlesWrapped> {
         Some(match image {
-            Image::Xkcd => &mut self.image_handles,
-            Image::Favorite(xkcd) => self.favorite_images.entry(xkcd.num).or_default(),
-            Image::Explanation(kind, idx) => {
+            ImageKind::Xkcd => &mut self.image_handles,
+            ImageKind::Favorite(xkcd) => self.favorite_images.entry(xkcd.num).or_default(),
+            ImageKind::Explanation(kind, idx) => {
                 let explanation = match kind {
                     ExplanationKind::Comic => self.explanation.as_mut(),
                     ExplanationKind::Article => self.article.as_mut(),
@@ -462,5 +486,16 @@ impl Running {
                 &mut explanation?.as_mut().ok()?.images[idx].0
             }
         })
+    }
+
+    fn cache_path(xkcd: u32) -> Result<PathBuf> {
+        let mut path = dirs::cache_dir().ok_or_yanet("Cannot get cache dir")?;
+        path.push("icekcd");
+        if !path.exists() {
+            fs::create_dir_all(&path)?;
+        }
+
+        path.push(format!("{xkcd}.png"));
+        Ok(path)
     }
 }

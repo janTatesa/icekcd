@@ -1,9 +1,9 @@
 use std::{fmt::Display, str::FromStr, time::Duration};
 
-use color_eyre::{Result, eyre::eyre};
 use isahc::{AsyncBody, AsyncReadResponseExt, Request, Response, config::Configurable};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
+use yanet::{Report, Result, yanet};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Xkcd {
@@ -66,7 +66,7 @@ impl Xkcd {
         let response =
             isahc::send_async(Request::get(url).timeout(Self::TIMEOUT).body(())?).await?;
         if response.status().is_client_error() || response.status().is_server_error() {
-            return Err(eyre!("HTTP response: {}", response.status()));
+            return Err(yanet!("HTTP response: {}", response.status()));
         }
 
         Ok(response)

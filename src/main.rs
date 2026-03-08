@@ -11,12 +11,12 @@ mod xkcd;
 use std::{collections::HashMap, f32, time::Duration};
 
 use clap::Parser;
-use color_eyre::{Result, eyre::OptionExt};
 use iced::{
     Subscription, Task, Theme,
     futures::{join, stream},
     window::{self},
 };
+use yanet::Result;
 
 use log::error;
 use lucide_icons::LUCIDE_FONT_BYTES;
@@ -37,12 +37,11 @@ struct Cli {
     xkcd: Option<Locator>,
 }
 
-fn parse_cli_locator(locator: &str) -> Result<Locator> {
-    Xkcd::parse_locator(locator).ok_or_eyre("Expected either a number or xkcd url")
+fn parse_cli_locator(locator: &str) -> Result<Locator, &'static str> {
+    Xkcd::parse_locator(locator).ok_or("Expected either a number or xkcd url")
 }
 
 fn main() -> Result<()> {
-    color_eyre::install()?;
     env_logger::init();
     let Cli { xkcd: xkcd_locator } = Cli::parse();
     let icon = Some(window::icon::from_file_data(
@@ -78,7 +77,7 @@ enum Icekcd {
 }
 
 #[derive(Clone, Debug)]
-enum Image {
+enum ImageKind {
     Xkcd,
     Favorite(Xkcd),
     Explanation(ExplanationKind, usize),
@@ -92,9 +91,9 @@ enum Message {
 
     ToggleProcessImage,
     // Xkcd num is necessary in the case of fetching of an image while comic is switched
-    ImageFetched(u32, Image, Vec<u8>),
-    ImageFetchError(u32, Image, String),
-    FetchImage(u32, Image),
+    ImageFetched(u32, ImageKind, Vec<u8>),
+    ImageFetchError(u32, ImageKind, String),
+    FetchImage(u32, ImageKind),
 
     ToggleShowExplanation,
     FetchExplanation(ExplanationKind),
@@ -206,7 +205,7 @@ impl Icekcd {
         let open_xkcd = locator.is_some() || config.show_latest_on_startup;
         let state = State::load(xkcd, open_xkcd, config.max_history_size)?;
         let mut tasks = vec![
-            Message::FetchImage(state.history().current_entry().xkcd.num, Image::Xkcd),
+            Message::FetchImage(state.history().current_entry().xkcd.num, ImageKind::Xkcd),
             Message::FetchExplanation(ExplanationKind::Comic),
             Message::FetchExplanation(ExplanationKind::Article),
         ];
@@ -215,7 +214,7 @@ impl Icekcd {
             tasks.extend(state.favorites().iter().map(|xkcd| {
                 Message::FetchImage(
                     state.history().current_entry().xkcd.num,
-                    Image::Favorite(xkcd.clone()),
+                    ImageKind::Favorite(xkcd.clone()),
                 )
             }));
         }
@@ -300,6 +299,7 @@ impl Icekcd {
                         error: None,
                         config,
                         image_handles: None,
+                        save_on_fetch: false,
                     });
 
                     return Task::batch(messages.into_iter().map(Task::done));
@@ -339,4 +339,5 @@ struct Running {
     error: Option<String>,
     config: Config,
     image_handles: ImageHandlesWrapped,
+    save_on_fetch: bool,
 }
