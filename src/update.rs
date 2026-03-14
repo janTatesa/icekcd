@@ -108,6 +108,9 @@ impl Running {
                     match Xkcd::parse_locator(pasted) {
                         Some(Locator::Latest) => Message::GoToLatest,
                         Some(Locator::Number(num)) => Message::GoToComic(num),
+                        Some(Locator::Article(article)) => {
+                            Message::LinkClicked(Link::ExplainXkcdUrl(article))
+                        }
                         None => Message::Noop,
                     }
                 }));

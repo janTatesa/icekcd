@@ -54,9 +54,10 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Locator {
     Number(u32),
+    Article(String),
     Latest,
 }
 
@@ -103,22 +104,21 @@ impl Xkcd {
             .or(locator.strip_prefix("https://www.explainxkcd.com/wiki/index.php"))
             .or(locator.strip_prefix("https://explainxkcd.com/wiki/index.php"))
             .or(locator.strip_prefix("https://www.explainxkcd.com"))
-            .or(locator.strip_prefix("https://explainxkcd.com"))
-            .unwrap_or(locator);
-        match stripped {
-            "/" | "" | "/Main_Page" => Some(Locator::Latest),
-            num => {
-                if let Some(num) = num.strip_prefix("/")
+            .or(locator.strip_prefix("https://explainxkcd.com"))?;
+
+        if let "/" | "" | "/Main_Page" = stripped {
+            return Some(Locator::Latest);
+        }
+
+        if let Some(num) = stripped.strip_prefix("/")
                     // TODO: use trim_suffix when stabilized
                     && let num = num.strip_suffix("/").unwrap_or(num)
                     && let Some(num) = num.split(":").next()
                     && let Ok(num) = num.parse()
-                {
-                    Some(Locator::Number(num))
-                } else {
-                    None
-                }
-            }
+        {
+            return Some(Locator::Number(num));
         }
+
+        Some(Locator::Article(locator.to_string()))
     }
 }

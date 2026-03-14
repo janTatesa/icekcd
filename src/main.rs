@@ -49,7 +49,7 @@ fn main() -> Result<()> {
         Some(::image::ImageFormat::Png),
     )?);
     iced::application(
-        move || Icekcd::boot(xkcd_locator),
+        move || Icekcd::boot(xkcd_locator.clone()),
         Icekcd::update,
         Icekcd::view,
     )
@@ -179,7 +179,7 @@ impl Icekcd {
         };
 
         (
-            Self::Starting(Some(config.clone()), locator),
+            Self::Starting(Some(config.clone()), locator.clone()),
             Task::future(Self::boot_inner(locator, config.clone())).map(|res| match res {
                 Ok(running) => Message::Run(Box::new(running)),
                 Err(error) => Message::InitError(error.to_string()),
@@ -191,19 +191,31 @@ impl Icekcd {
         locator: Option<Locator>,
         config: Config,
     ) -> Result<(Xkcd, State, Config, Vec<Message>)> {
-        let (xkcd, latest_xkcd) = match locator {
+        let open_xkcd = locator
+            .as_ref()
+            .is_some_and(|locator| !matches!(locator, Locator::Article(_)))
+            || config.show_latest_on_startup;
+
+        let (xkcd, latest_xkcd, article) = match locator {
             Some(Locator::Number(xkcd)) => {
                 let (xkcd, latest) = join!(Xkcd::get(xkcd), Xkcd::get_latest());
-                (xkcd?, latest?)
+                (xkcd?, latest?, None)
+            }
+            Some(Locator::Article(article)) => {
+                let xkcd = Xkcd::get_latest().await?;
+                (xkcd.clone(), xkcd, Some(article))
             }
             _ => {
                 let xkcd = Xkcd::get_latest().await?;
-                (xkcd.clone(), xkcd)
+                (xkcd.clone(), xkcd, None)
             }
         };
 
-        let open_xkcd = locator.is_some() || config.show_latest_on_startup;
-        let state = State::load(xkcd, open_xkcd, config.max_history_size)?;
+        let mut state = State::load(xkcd, open_xkcd, config.max_history_size)?;
+        if let Some(article) = article {
+            state.open_article(article, config.max_history_size)?;
+        }
+
         let mut tasks = vec![
             Message::FetchImage(state.history().current_entry().xkcd.num, ImageKind::Xkcd),
             Message::FetchExplanation(ExplanationKind::Comic),
@@ -270,7 +282,7 @@ impl Icekcd {
         match self {
             Icekcd::InitFailure(_, _, locator) => {
                 if let Message::Reboot = message {
-                    let (app, task) = Self::boot(*locator);
+                    let (app, task) = Self::boot(locator.take());
                     *self = app;
                     return task;
                 }
@@ -284,7 +296,7 @@ impl Icekcd {
             }
             Icekcd::Starting(config, locator) => match message {
                 Message::InitError(error) => {
-                    *self = Icekcd::InitFailure(error, config.clone(), *locator)
+                    *self = Icekcd::InitFailure(error, config.clone(), locator.take())
                 }
 
                 Message::Run(boxed) => {

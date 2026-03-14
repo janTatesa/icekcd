@@ -57,7 +57,14 @@ impl Explanation {
                 let elements = html
                     .select(&Selector::parse(".mw-parser-output").unwrap())
                     .next()?
-                    .children();
+                    .children()
+                    .chain(
+                        html.select(&Selector::parse("#mw-pages").unwrap())
+                            .next()
+                            .into_iter()
+                            .flat_map(|elem| elem.children()),
+                    );
+
                 scrape_elements(elements, &mut contains_unknown, &mut images, modifiers)
             }
         };
@@ -191,20 +198,6 @@ fn scrape_elements<'a>(
     images: &mut Vec<(ImageHandlesWrapped, String)>,
     modifiers: Modifiers,
 ) -> Vec<ExplanationElement<'a>> {
-    fn push_spans<'a>(elements: &mut Vec<ExplanationElement<'a>>, mut spans: Vec<Span<'a>>) {
-        while spans.last().is_some_and(|span| span.text.trim() == "") {
-            spans.pop();
-        }
-
-        while spans.first().is_some_and(|span| span.text.trim() == "") {
-            spans.remove(0);
-        }
-
-        if !spans.is_empty() {
-            elements.push(ExplanationElement::Text(spans));
-        }
-    }
-
     let mut node_iter = NodeIter {
         children: Box::new(contents),
         inner: None,
@@ -215,10 +208,15 @@ fn scrape_elements<'a>(
     let mut elements = vec![];
     while let Some((node, modifiers)) = node_iter.next() {
         match scrape_element(node, contains_unknown, images, modifiers) {
-            Some(ScrapeElementOut::Span(span)) => spans.push(span),
+            Some(ScrapeElementOut::Span(span)) => {
+                if span.text.trim() != "" {
+                    spans.push(span)
+                }
+            }
             Some(ScrapeElementOut::Element(element)) => {
+                let spans = mem::take(&mut spans);
                 if !spans.is_empty() {
-                    push_spans(&mut elements, mem::take(&mut spans));
+                    elements.push(ExplanationElement::Text(spans));
                 }
 
                 elements.push(element);
@@ -276,7 +274,9 @@ fn scrape_elements<'a>(
         }
     }
 
-    push_spans(&mut elements, spans);
+    if !spans.is_empty() {
+        elements.push(ExplanationElement::Text(spans));
+    }
 
     elements
 }
