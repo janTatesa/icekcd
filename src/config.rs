@@ -74,7 +74,7 @@ fn deserialize_font<'de, D>(deserializer: D) -> Result<Font, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Ok(Font::with_name(String::deserialize(deserializer)?.leak()))
+    Ok(Font::with_family(&*String::deserialize(deserializer)?))
 }
 
 fn deserialize_color<'de, D>(deserializer: D) -> Result<Color, D::Error>

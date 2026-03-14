@@ -14,6 +14,7 @@ use clap::Parser;
 use iced::{
     Subscription, Task, Theme,
     futures::{join, stream},
+    theme::palette::Seed,
     window::{self},
 };
 use yanet::Result;
@@ -267,7 +268,7 @@ impl Icekcd {
         };
         Theme::custom(
             "Custom theme",
-            iced::theme::Palette {
+            Seed {
                 background: bg,
                 text,
                 primary,

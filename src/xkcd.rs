@@ -3,7 +3,7 @@ use std::{fmt::Display, str::FromStr, time::Duration};
 use isahc::{AsyncBody, AsyncReadResponseExt, Request, Response, config::Configurable};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
-use yanet::{Report, Result, yanet};
+use yanet::{Result, yanet};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Xkcd {

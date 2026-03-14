@@ -2,7 +2,8 @@ use crate::config::{Colors, Config};
 use crate::explanation::{Description, ExplanationElement, Heading, Modifiers, Span};
 use crate::state::Viewable;
 use crate::{ExplanationKind, FONT_SIZE, Icekcd, ImageHandlesWrapped, ImageKind, Message, Running};
-use iced::theme::{Palette, palette};
+use iced::theme::Palette;
+use iced::theme::palette::Seed;
 use iced::widget::Row;
 use iced::{
     Alignment, Color, Element, Font, Length, Shadow, Theme, Vector, border,
@@ -43,7 +44,7 @@ const MAX_EXPLANATION_WIDTH: f32 = 700.0;
 impl Running {
     pub fn view(&self) -> Element<'_, Message> {
         let xkcd = self.xkcd();
-        let palette = self.extended_palette();
+        let palette = self.palette();
         let history_back = Self::button(Icon::ArrowLeft, button::primary).on_press_maybe(
             self.state
                 .history()
@@ -265,16 +266,12 @@ impl Running {
                         button(column![title, content].spacing(SPACING))
                             .padding(SPACING)
                             .style(|theme, status| button::Style {
-                                text_color: theme.palette().text,
-                                background: Some(theme.palette().background.into()),
+                                text_color: theme.seed().text,
+                                background: Some(theme.seed().background.into()),
                                 border: border::color(match status {
-                                    button::Status::Active => {
-                                        theme.extended_palette().secondary.base.color
-                                    }
-                                    button::Status::Hovered => theme.palette().primary,
-                                    button::Status::Pressed => {
-                                        theme.extended_palette().primary.weak.color
-                                    }
+                                    button::Status::Active => theme.palette().secondary.base.color,
+                                    button::Status::Hovered => theme.seed().primary,
+                                    button::Status::Pressed => theme.palette().primary.weak.color,
                                     button::Status::Disabled => unreachable!(),
                                 })
                                 .width(BORDER_WIDTH)
@@ -318,8 +315,8 @@ impl Running {
                 .width(FAVORITES_WIDTH)
                 .style(|theme| container::Style {
                     text_color: None,
-                    background: Some(theme.palette().background.into()),
-                    border: border::color(theme.extended_palette().secondary.base.color)
+                    background: Some(theme.seed().background.into()),
+                    border: border::color(theme.palette().secondary.base.color)
                         .width(BORDER_WIDTH)
                         .rounded(BORDER_RADIUS),
                     shadow: SHADOW,
@@ -405,7 +402,7 @@ impl Running {
                     ..self.config.font
                 })
                 .link(Link::Url(url))
-                .color(self.palette().primary)
+                .color(self.palette_seed().primary)
         ]
         .on_link_click(Message::LinkClicked);
         let close_button = Self::button(Icon::CircleX, button::primary).on_press(close_msg);
@@ -428,12 +425,12 @@ impl Running {
             .map(|link| {
                 let content = container(link)
                     .style(|theme: &Theme| container::Style {
-                        text_color: Some(theme.palette().primary),
+                        text_color: Some(theme.seed().primary),
                         border: border::rounded(BORDER_RADIUS)
                             .width(BORDER_WIDTH)
-                            .color(theme.extended_palette().secondary.base.color),
+                            .color(theme.palette().secondary.base.color),
                         shadow: SHADOW,
-                        background: Some(theme.palette().background.into()),
+                        background: Some(theme.seed().background.into()),
                         ..Default::default()
                     })
                     .padding(SPACING);
@@ -447,8 +444,8 @@ impl Running {
                 container(content)
                     .style(|theme| container::Style {
                         text_color: None,
-                        background: Some(theme.palette().background.into()),
-                        border: border::color(theme.extended_palette().secondary.base.color)
+                        background: Some(theme.seed().background.into()),
+                        border: border::color(theme.palette().secondary.base.color)
                             .width(BORDER_WIDTH)
                             .rounded(BORDER_RADIUS),
                         shadow: SHADOW,
@@ -484,7 +481,7 @@ impl Running {
                     } else {
                         text("•").font(font)
                     }
-                    .color(self.extended_palette().secondary.base.color);
+                    .color(self.palette().secondary.base.color);
                     row![
                         start,
                         self.explanation_inner(item, kind, default_modifiers, images)
@@ -542,9 +539,10 @@ impl Running {
                     .separator(BORDER_WIDTH)
                     .into()
             }
-            ExplanationElement::Unknown(html) => {
-                text(html).color(self.palette().danger).font(font).into()
-            }
+            ExplanationElement::Unknown(html) => text(html)
+                .color(self.palette_seed().danger)
+                .font(font)
+                .into(),
             ExplanationElement::DescriptionList(descriptions) => {
                 let descriptions = descriptions.iter().map(|Description { head, body }| {
                     let body = body.iter().map(|paragraph| {
@@ -598,12 +596,12 @@ impl Running {
                     ])
                     .padding(SPACING)
                     .style(|theme| container::Style {
-                        text_color: Some(theme.palette().primary),
+                        text_color: Some(theme.seed().primary),
                         border: border::rounded(BORDER_RADIUS)
                             .width(BORDER_WIDTH)
-                            .color(theme.extended_palette().secondary.base.color),
+                            .color(theme.palette().secondary.base.color),
                         shadow: SHADOW,
-                        background: Some(theme.palette().background.into()),
+                        background: Some(theme.seed().background.into()),
                         ..Default::default()
                     })
                     .into()
@@ -614,7 +612,7 @@ impl Running {
             ExplanationElement::Text(spans) => self.paragraph(spans, default_modifiers),
             ExplanationElement::BlockQuote(explanation_elements) => {
                 let rule = rule::vertical(BORDER_WIDTH).style(|theme: &Theme| rule::Style {
-                    color: theme.extended_palette().secondary.base.color,
+                    color: theme.palette().secondary.base.color,
                     radius: BORDER_RADIUS.into(),
                     fill_mode: FillMode::Full,
                     snap: true,
@@ -681,10 +679,10 @@ impl Running {
                 (Some(heading), _, _) => heading.font_size(),
                 _ => FONT_SIZE,
             };
-            let weak = self.extended_palette().primary.weak.color;
+            let weak = self.palette().primary.weak.color;
             let color = match (color, &span.link) {
                 (Some(color), _) => color,
-                (_, None) => self.palette().text,
+                (_, None) => self.palette_seed().text,
                 (_, Some(Link::Xkcd(xkcd)))
                     if self.state.has_been_viewed(Viewable::Xkcd(*xkcd)) =>
                 {
@@ -696,7 +694,7 @@ impl Running {
                 {
                     weak
                 }
-                _ => self.palette().primary,
+                _ => self.palette_seed().primary,
             };
 
             iced_selection::span(span.text.to_string())
@@ -721,7 +719,7 @@ impl Running {
         style: F,
     ) -> Button<'a, Message> {
         let content = text(icon.unicode())
-            .font(Font::with_name("lucide"))
+            .font(Font::with_family("lucide"))
             .shaping(text::Shaping::Advanced);
         button(content)
             .style(move |theme, status| {
@@ -769,14 +767,14 @@ impl Running {
             .processing_enabled(self.config.process_image_by_default, comic)
     }
 
-    fn palette(&self) -> Palette {
+    fn palette_seed(&self) -> Seed {
         let Colors {
             primary,
             text,
             bg,
             danger,
         } = self.config.colors;
-        Palette {
+        Seed {
             background: bg,
             text,
             primary,
@@ -786,8 +784,8 @@ impl Running {
         }
     }
 
-    fn extended_palette(&self) -> palette::Extended {
-        palette::Extended::generate(self.palette())
+    fn palette(&self) -> Palette {
+        Palette::generate(self.palette_seed())
     }
 }
 

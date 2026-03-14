@@ -70,12 +70,13 @@ pub struct ImageHandles {
 }
 
 impl ImageHandles {
-    pub fn get(&self, processing_enabled: bool) -> &Handle {
+    pub fn get(&self, processing_enabled: bool) -> Handle {
         if processing_enabled {
             &self.processed
         } else {
             &self.original
         }
+        .clone()
     }
 
     pub fn encoded(&self) -> &[u8] {
