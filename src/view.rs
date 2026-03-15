@@ -4,7 +4,7 @@ use crate::state::Viewable;
 use crate::{ExplanationKind, FONT_SIZE, Icekcd, ImageHandlesWrapped, ImageKind, Message, Running};
 use iced::theme::Palette;
 use iced::theme::palette::Seed;
-use iced::widget::Row;
+use iced::widget::grid;
 use iced::{
     Alignment, Color, Element, Font, Length, Shadow, Theme, Vector, border,
     font::{self, Weight},
@@ -23,8 +23,6 @@ use iced::{
 use iced_selection::{rich_text, text::Rich};
 use iced_split::vertical_split;
 use lucide_icons::Icon;
-use std::array;
-use std::iter::Peekable;
 use std::ops::Not;
 
 use crate::explanation::Link;
@@ -59,7 +57,6 @@ impl Running {
                 .then_some(Message::HistoryNext),
         );
 
-        let font = self.config.font;
         let mut title_font = self.config.font;
         title_font.weight = Weight::Bold;
         let title = rich_text![
@@ -67,11 +64,10 @@ impl Running {
                 .color(palette.secondary.base.color)
                 .font(title_font),
             span(&xkcd.title).font(title_font).link(()),
-            span(" (").color(palette.secondary.base.color).font(font),
+            span(" (").color(palette.secondary.base.color),
             span(format!("{}-{:02}-{:02}", xkcd.year, xkcd.month, xkcd.day))
-                .color(palette.primary.base.color)
-                .font(font),
-            span(")").color(palette.secondary.base.color).font(font)
+                .color(palette.primary.base.color),
+            span(")").color(palette.secondary.base.color)
         ]
         .on_link_click(|_: ()| Message::OpenInBrowser);
         let title = container(title).center_x(Length::Fill);
@@ -109,10 +105,8 @@ impl Running {
             Length::Fill,
             |handles| {
                 if handles.contains_color() && self.processing_enabled(xkcd.num) {
-                    contains_color_notice = Some(
-                        text("This image contains color. Toggle off processing to view it")
-                            .font(font),
-                    )
+                    contains_color_notice =
+                        Some("This image contains color. Toggle off processing to view it")
                 }
 
                 viewer(handles.get(self.processing_enabled(xkcd.num)))
@@ -183,15 +177,12 @@ impl Running {
         let bottom_right_buttons =
             container(row![togle_show_favorites, toggle_favorite].spacing(SPACING))
                 .align_right(Length::Fill);
-        let error = self
-            .error
-            .as_ref()
-            .map(|err| text(err).style(text::danger).font(font));
-        let alt = container(iced_selection::text(&self.xkcd().alt).center().font(font))
-            .center_x(Length::Fill);
-        let interactive_notice = self.xkcd().is_interactive.then_some(
-            text("This comic is interactive. Press ctrl-o to open it in browser").font(font),
-        );
+        let error = self.error.as_ref().map(|err| text(err).style(text::danger));
+        let alt = container(iced_selection::text(&self.xkcd().alt).center()).center_x(Length::Fill);
+        let interactive_notice = self
+            .xkcd()
+            .is_interactive
+            .then_some("This comic is interactive. Press ctrl-o to open it in browser");
 
         let xkcd_view = container(
             column![
@@ -231,65 +222,51 @@ impl Running {
         });
 
         let favorites = self.state.show_favorites().then(|| {
-            let favorites = Column::from_iter(
-                OptionArrayChunks::<_, 3>(self.state.favorites().iter().peekable()).map(|xkcd| {
-                    Row::from_iter(xkcd.map(|xkcd| {
-                        let Some(xkcd) = xkcd else {
-                            return space().width(Length::FillPortion(1)).into();
-                        };
-
-                        let title = container(
-                            rich_text![
-                                span(format!("{}: ", xkcd.num))
-                                    .color(palette.secondary.base.color)
-                                    .font(font),
-                                span(&xkcd.title).font(title_font)
-                            ]
-                            .on_link_click(never),
+            let grid = grid(self.state.favorites().iter().map(|xkcd| {
+                let title = container(
+                    rich_text![
+                        span(format!("{}: ", xkcd.num)).color(palette.secondary.base.color),
+                        span(&xkcd.title).font(title_font)
+                    ]
+                    .on_link_click(never),
+                )
+                .center_x(Length::Fill);
+                let content = self.fetchable(
+                    self.favorite_images.get(&xkcd.num).and_then(Option::as_ref),
+                    "image",
+                    Message::FetchImage(self.xkcd().num, ImageKind::Favorite(xkcd.clone())),
+                    Length::FillPortion(1),
+                    Length::Fixed(SPACING * 100.0),
+                    |img| {
+                        container(
+                            widget::image(img.get(self.processing_enabled(xkcd.num)))
+                                .width(Length::Fill),
                         )
-                        .center_x(Length::Fill);
-                        let content = self.fetchable(
-                            self.favorite_images.get(&xkcd.num).and_then(Option::as_ref),
-                            "image",
-                            Message::FetchImage(self.xkcd().num, ImageKind::Favorite(xkcd.clone())),
-                            Length::FillPortion(1),
-                            Length::Fixed(SPACING * 100.0),
-                            |img| {
-                                container(
-                                    widget::image(img.get(self.processing_enabled(xkcd.num)))
-                                        .width(Length::Fill),
-                                )
-                                .center(Length::Fill)
-                                .into()
-                            },
-                        );
-                        button(column![title, content].spacing(SPACING))
-                            .padding(SPACING)
-                            .style(|theme, status| button::Style {
-                                text_color: theme.seed().text,
-                                background: Some(theme.seed().background.into()),
-                                border: border::color(match status {
-                                    button::Status::Active => theme.palette().secondary.base.color,
-                                    button::Status::Hovered => theme.seed().primary,
-                                    button::Status::Pressed => theme.palette().primary.weak.color,
-                                    button::Status::Disabled => unreachable!(),
-                                })
-                                .width(BORDER_WIDTH)
-                                .rounded(BORDER_RADIUS),
-                                shadow: SHADOW,
-                                snap: true,
-                            })
-                            .on_press(Message::GoToComic(xkcd.num))
-                            .height(400.0)
-                            .into()
-                    }))
-                    .spacing(SPACING)
+                        .center(Length::Fill)
+                        .into()
+                    },
+                );
+                button(column![title, content].spacing(SPACING))
+                    .padding(SPACING)
+                    .style(|theme, status| button::Style {
+                        text_color: theme.seed().text,
+                        background: Some(theme.seed().background.into()),
+                        border: border::color(match status {
+                            button::Status::Active => theme.palette().secondary.base.color,
+                            button::Status::Hovered => theme.seed().primary,
+                            button::Status::Pressed => theme.palette().primary.weak.color,
+                            button::Status::Disabled => unreachable!(),
+                        })
+                        .width(BORDER_WIDTH)
+                        .rounded(BORDER_RADIUS),
+                        shadow: SHADOW,
+                        snap: true,
+                    })
+                    .on_press(Message::GoToComic(xkcd.num))
                     .into()
-                }),
-            )
+            }))
+            .columns(4)
             .spacing(SPACING);
-
-            const FAVORITES_WIDTH: f32 = 900.0;
             container(
                 container(
                     column![
@@ -303,7 +280,7 @@ impl Running {
                             )
                             .align_right(Length::Fill)
                         ],
-                        widget::scrollable(favorites)
+                        widget::scrollable(grid)
                             .id("favorites")
                             .width(Length::Fill)
                             .height(Length::Fill)
@@ -328,6 +305,7 @@ impl Running {
             .height(Length::Fill)
             .padding(padding::vertical(SPACING))
         });
+        const FAVORITES_WIDTH: f32 = 900.0;
         let dimmer = (article.is_some() || favorites.is_some()).then_some(
             container(space())
                 .width(Length::Fill)
@@ -347,7 +325,6 @@ impl Running {
         url: String,
         close_msg: Message,
     ) -> Element<'_, Message> {
-        let font = self.config.font;
         let explanation = self.fetchable(
             match kind {
                 ExplanationKind::Comic => self.explanation.as_ref(),
@@ -363,7 +340,7 @@ impl Running {
                         row![
                             Self::button(Icon::RefreshCw, button::primary)
                                 .on_press(Message::FetchExplanation(kind)),
-                            text("This comic doesn't have an explanation yet").font(font)
+                            "This comic doesn't have an explanation yet"
                         ]
                         .align_y(Alignment::Center)
                         .spacing(SPACING),
@@ -412,7 +389,7 @@ impl Running {
         ];
 
         let contains_unknown_notice = match &self.explanation {
-            Some(Ok(explanation)) if explanation.contains_unknown => Some(text("This explanation contains elements which icekcd couldn't parse, pwease submit an issue").style(text::danger).font(font)),
+            Some(Ok(explanation)) if explanation.contains_unknown => Some(text("This explanation contains elements which icekcd couldn't parse, pwease submit an issue").style(text::danger)),
             _ => None,
         };
 
@@ -786,18 +763,6 @@ impl Running {
 
     fn palette(&self) -> Palette {
         Palette::generate(self.palette_seed())
-    }
-}
-
-pub struct OptionArrayChunks<I: Iterator, const N: usize>(Peekable<I>);
-
-impl<I: Iterator, const N: usize> Iterator for OptionArrayChunks<I, N> {
-    type Item = [Option<I::Item>; N];
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.peek()?;
-
-        Some(array::from_fn(|_| self.0.next()))
     }
 }
 

@@ -12,7 +12,7 @@ use std::{collections::HashMap, f32, time::Duration};
 
 use clap::Parser;
 use iced::{
-    Subscription, Task, Theme,
+    Subscription, Task, Theme, font,
     futures::join,
     theme::palette::Seed,
     window::{self},
@@ -181,10 +181,12 @@ impl Icekcd {
 
         (
             Self::Starting(Some(config.clone()), locator.clone()),
-            Task::future(Self::boot_inner(locator, config.clone())).map(|res| match res {
-                Ok(running) => Message::Run(Box::new(running)),
-                Err(error) => Message::InitError(error.to_string()),
-            }),
+            font::set_defaults(config.font, 16.0).chain(
+                Task::future(Self::boot_inner(locator, config.clone())).map(|res| match res {
+                    Ok(running) => Message::Run(Box::new(running)),
+                    Err(error) => Message::InitError(error.to_string()),
+                }),
+            ),
         )
     }
 
