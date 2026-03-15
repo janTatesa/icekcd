@@ -8,7 +8,7 @@ clap = { version = "4.5.58", features = ["cargo", "derive"] }
 dirs = "6.0.0"
 ego-tree = "0.10.0"
 env_logger = "0.11.8"
-iced = { git = "https://github.com/iced-rs/iced", branch = "master", version = "0.15.0-dev", features = ["image"] }
+iced = { git = "https://github.com/iced-rs/iced", branch = "master", version = "0.15.0-dev", features = ["image", "smol"] }
 iced_selection = { git ="https://git.sr.ht/~pml68/iced_selection" }
 iced_split = { git = "https://github.com/edwloef/iced_split", version = "0.2.0-dev" }
 image = { version = "0.25.9", default-features = false }

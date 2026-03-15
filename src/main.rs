@@ -13,7 +13,7 @@ use std::{collections::HashMap, f32, time::Duration};
 use clap::Parser;
 use iced::{
     Subscription, Task, Theme,
-    futures::{join, stream},
+    futures::join,
     theme::palette::Seed,
     window::{self},
 };
@@ -236,21 +236,15 @@ impl Icekcd {
     }
 
     fn subscription(&self) -> Subscription<Message> {
+        async fn fetch_latest() -> Message {
+            match Xkcd::get_latest().await {
+                Ok(xkcd) => Message::LatestXkcdFetched(xkcd),
+                Err(error) => Message::Error(error.to_string()),
+            }
+        }
         Subscription::batch([
             iced::event::listen().filter_map(handle_iced_event),
-            Subscription::run(|| {
-                stream::unfold(0, move |i| async move {
-                    if i > 0 {
-                        _ = smol::Timer::after(Duration::from_mins(15)).await;
-                    }
-
-                    let msg = match Xkcd::get_latest().await {
-                        Ok(xkcd) => Message::LatestXkcdFetched(xkcd),
-                        Err(error) => Message::Error(error.to_string()),
-                    };
-                    Some((msg, i + 1))
-                })
-            }),
+            iced::time::repeat(fetch_latest, Duration::from_mins(15)),
         ])
     }
 
