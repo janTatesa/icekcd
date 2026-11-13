@@ -37,12 +37,8 @@ impl Explanation {
         let elements = match kind {
             ExplanationKind::Comic => {
                 let elements = html
-                    .select(&Selector::parse("#Explanation").unwrap())
-                    .next()
-                    .or_else(|| {
-                        html.select(&Selector::parse("#Eggsplanation").unwrap())
-                            .next()
-                    })?
+                    .select(&Selector::parse(".mw-headline").unwrap())
+                    .next()?
                     .parent()?
                     .next_siblings()
                     .take_while(|node| {
@@ -731,7 +727,8 @@ mod tests {
         let start: u32 = option_env!("TEST_START").unwrap_or("1").parse().unwrap();
         for num in start..=max {
             println!("Fetching {num}");
-            let mut response = isahc::get(format!("https://explainxkcd.com/{num}")).unwrap();
+            let mut response =
+                isahc::get(format!("https://www.explainxkcd.com/wiki/index.php/{num}")).unwrap();
             assert!(!(response.status().is_client_error() || response.status().is_server_error()));
             let src = response.text().unwrap();
             println!("Scraping {num}");

@@ -2,9 +2,7 @@ use crate::config::{Colors, Config};
 use crate::explanation::{Description, ExplanationElement, Heading, Modifiers, Span};
 use crate::state::Viewable;
 use crate::{ExplanationKind, FONT_SIZE, Icekcd, ImageHandlesWrapped, ImageKind, Message, Running};
-use iced::theme::Palette;
-use iced::theme::palette::Seed;
-use iced::widget::grid;
+use iced::widget::{grid, text::Rich};
 use iced::{
     Alignment, Color, Element, Font, Length, Shadow, Theme, Vector, border,
     font::{self, Weight},
@@ -19,8 +17,9 @@ use iced::{
         text,
     },
 };
+use iced::{Widget, theme::palette::Seed};
+use iced::{theme::Palette, widget::rich_text};
 
-use iced_selection::{rich_text, text::Rich};
 use iced_split::vertical_split;
 use lucide_icons::Icon;
 use std::ops::Not;
@@ -114,7 +113,7 @@ impl Running {
                     .height(Length::Fill)
                     .min_scale(1.0)
                     .max_scale(MAX_IMG_SCALE)
-                    .into()
+                    .boxed()
             },
         );
 
@@ -178,7 +177,8 @@ impl Running {
             container(row![togle_show_favorites, toggle_favorite].spacing(SPACING))
                 .align_right(Length::Fill);
         let error = self.error.as_ref().map(|err| text(err).style(text::danger));
-        let alt = container(iced_selection::text(&self.xkcd().alt).center()).center_x(Length::Fill);
+        let alt =
+            container(text(&self.xkcd().alt).center().selectable(true)).center_x(Length::Fill);
         let interactive_notice = self
             .xkcd()
             .is_interactive
@@ -197,20 +197,20 @@ impl Running {
             .spacing(SPACING),
         );
 
-        let main_view: Element<'_, _> = if self.state.show_explanation() {
+        let main_view = if self.state.show_explanation() {
             let content = vertical_split(
                 xkcd_view,
                 self.explanation_view(
                     ExplanationKind::Comic,
-                    format!("https://explainxkcd.com/{}", self.xkcd().num),
+                    format!("https://explainxkcd.com/wiki/index.php/{}", self.xkcd().num),
                     Message::ToggleShowExplanation,
                 ),
                 self.state.split(),
                 Message::DragSplit,
             );
-            container(content).padding(SPACING).into()
+            container(content).padding(SPACING).boxed()
         } else {
-            xkcd_view.padding(SPACING).into()
+            xkcd_view.padding(SPACING).boxed()
         };
 
         let article = self.current_entry().article.as_ref().map(|article| {
@@ -243,12 +243,12 @@ impl Running {
                                 .width(Length::Fill),
                         )
                         .center(Length::Fill)
-                        .into()
+                        .boxed()
                     },
                 );
                 button(column![title, content].spacing(SPACING))
                     .padding(SPACING)
-                    .style(|theme, status| button::Style {
+                    .style(|theme: &Theme, status| button::Style {
                         text_color: theme.seed().text,
                         background: Some(theme.seed().background.into()),
                         border: border::color(match status {
@@ -263,7 +263,6 @@ impl Running {
                         snap: true,
                     })
                     .on_press(Message::GoToComic(xkcd.num))
-                    .into()
             }))
             .columns(4)
             .spacing(SPACING);
@@ -290,7 +289,7 @@ impl Running {
                 )
                 .height(Length::Fill)
                 .width(FAVORITES_WIDTH)
-                .style(|theme| container::Style {
+                .style(|theme: &Theme| container::Style {
                     text_color: None,
                     background: Some(theme.seed().background.into()),
                     border: border::color(theme.palette().secondary.base.color)
@@ -316,7 +315,7 @@ impl Running {
                 }),
         );
 
-        stack![main_view, dimmer, article, favorites].into()
+        stack![main_view, dimmer, article, favorites].boxed()
     }
 
     fn explanation_view(
@@ -346,7 +345,7 @@ impl Running {
                         .spacing(SPACING),
                     )
                     .center(Length::Fill)
-                    .into();
+                    .boxed();
                 }
 
                 let content = self.explanation_inner(
@@ -361,7 +360,7 @@ impl Running {
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .auto_scroll(true)
-                    .into()
+                    .boxed()
             },
         );
 
@@ -414,12 +413,12 @@ impl Running {
                 container(content).align_bottom(Length::Fill)
             });
 
-        let content = stack![explanation_view, hovered_link].into();
+        let content = stack![explanation_view, hovered_link].boxed();
         match kind {
             ExplanationKind::Comic => content,
             ExplanationKind::Article => container(
                 container(content)
-                    .style(|theme| container::Style {
+                    .style(|theme: &Theme| container::Style {
                         text_color: None,
                         background: Some(theme.seed().background.into()),
                         border: border::color(theme.palette().secondary.base.color)
@@ -434,7 +433,7 @@ impl Running {
             )
             .center_x(Length::Fill)
             .padding(padding::vertical(SPACING))
-            .into(),
+            .boxed(),
         }
     }
 
@@ -464,9 +463,8 @@ impl Running {
                         self.explanation_inner(item, kind, default_modifiers, images)
                     ]
                     .spacing(SPACING)
-                    .into()
                 }))
-                .into()
+                .boxed()
             }
             ExplanationElement::Table {
                 content,
@@ -474,7 +472,7 @@ impl Running {
                 rows,
             } => {
                 if *rows == 0 || *columns == 0 {
-                    return space().into();
+                    return space().boxed();
                 }
 
                 let rows = (1..*rows).filter(|row| {
@@ -514,12 +512,12 @@ impl Running {
                 Table::new(columns, rows)
                     .padding(SPACING)
                     .separator(BORDER_WIDTH)
-                    .into()
+                    .boxed()
             }
             ExplanationElement::Unknown(html) => text(html)
                 .color(self.palette_seed().danger)
                 .font(font)
-                .into(),
+                .boxed(),
             ExplanationElement::DescriptionList(descriptions) => {
                 let descriptions = descriptions.iter().map(|Description { head, body }| {
                     let body = body.iter().map(|paragraph| {
@@ -540,10 +538,9 @@ impl Running {
                         ),
                         body
                     ]
-                    .into()
                 });
 
-                Column::from_iter(descriptions).spacing(SPACING).into()
+                Column::from_iter(descriptions).spacing(SPACING).boxed()
             }
             ExplanationElement::Image { idx, description } => {
                 let img = container(self.fetchable(
@@ -556,7 +553,7 @@ impl Running {
                         viewer(handles.get(self.processing_enabled(self.xkcd().num)))
                             .min_scale(1.0)
                             .max_scale(MAX_IMG_SCALE)
-                            .into()
+                            .boxed()
                     },
                 ))
                 .padding(SPACING);
@@ -572,7 +569,7 @@ impl Running {
                         .center_x(Length::Fill)
                     ])
                     .padding(SPACING)
-                    .style(|theme| container::Style {
+                    .style(|theme: &Theme| container::Style {
                         text_color: Some(theme.seed().primary),
                         border: border::rounded(BORDER_RADIUS)
                             .width(BORDER_WIDTH)
@@ -581,9 +578,9 @@ impl Running {
                         background: Some(theme.seed().background.into()),
                         ..Default::default()
                     })
-                    .into()
+                    .boxed()
                 } else {
-                    img.into()
+                    img.boxed()
                 }
             }
             ExplanationElement::Text(spans) => self.paragraph(spans, default_modifiers),
@@ -607,14 +604,14 @@ impl Running {
                     )
                 ]
                 .spacing(5)
-                .into()
+                .boxed()
             }
         });
 
         Column::from_iter(iter)
             .spacing(SPACING)
-            .max_width(MAX_EXPLANATION_WIDTH)
-            .into()
+            .width(MAX_EXPLANATION_WIDTH)
+            .boxed()
     }
 
     fn paragraph<'a>(
@@ -622,7 +619,7 @@ impl Running {
         spans: impl IntoIterator<Item = &'a Span<'a>>,
         default_modifiers: Modifiers,
     ) -> Element<'a, Message> {
-        let elements = spans.into_iter().map(move |span| {
+        let elements = spans.into_iter().map(move |wiki_span| {
             let Modifiers {
                 bold,
                 italic,
@@ -634,7 +631,7 @@ impl Running {
                 heading,
                 strikethrough,
                 ..
-            } = default_modifiers | span.modifiers;
+            } = default_modifiers | wiki_span.modifiers;
 
             let mut font = if code {
                 Font::MONOSPACE
@@ -657,7 +654,7 @@ impl Running {
                 _ => FONT_SIZE,
             };
             let weak = self.palette().primary.weak.color;
-            let color = match (color, &span.link) {
+            let color = match (color, &wiki_span.link) {
                 (Some(color), _) => color,
                 (_, None) => self.palette_seed().text,
                 (_, Some(Link::Xkcd(xkcd)))
@@ -674,21 +671,19 @@ impl Running {
                 _ => self.palette_seed().primary,
             };
 
-            iced_selection::span(span.text.to_string())
+            span(wiki_span.text.to_string())
                 .font(font)
                 .color(color)
                 .underline(underline)
                 .strikethrough(strikethrough)
                 .size(size)
-                .link_maybe(span.link.clone())
+                .link_maybe(wiki_span.link.clone())
         });
 
         Rich::from_iter(elements)
             .on_link_click(Message::LinkClicked)
-            .on_link_hover(Message::LinkHover)
-            .on_hover_lost(Message::HoverEnd)
             .wrapping(text::Wrapping::WordOrGlyph)
-            .into()
+            .boxed()
     }
 
     fn button<'a, F: Fn(&Theme, button::Status) -> button::Style + 'a>(
@@ -697,7 +692,8 @@ impl Running {
     ) -> Button<'a, Message> {
         let content = text(icon.unicode())
             .font(Font::with_family("lucide"))
-            .shaping(text::Shaping::Advanced);
+            .shaping(text::Shaping::Advanced)
+            .boxed();
         button(content)
             .style(move |theme, status| {
                 let mut style = style(theme, status);
@@ -731,11 +727,11 @@ impl Running {
             )
             .center_x(width)
             .center_y(height)
-            .into(),
+            .boxed(),
             _ => container(text!("Fetching {name}").font(self.config.font))
                 .center_x(width)
                 .center_y(height)
-                .into(),
+                .boxed(),
         }
     }
 
@@ -780,13 +776,13 @@ impl Icekcd {
                 .spacing(SPACING),
             )
             .center(Length::Fill)
-            .into(),
+            .boxed(),
             Icekcd::Running(running) => running.view(),
             Icekcd::Starting(config, _) => container(
                 text!("Starting").font(config.as_ref().unwrap_or(&Config::default()).font),
             )
             .center(Length::Fill)
-            .into(),
+            .boxed(),
         }
     }
 }

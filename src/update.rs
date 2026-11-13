@@ -1,9 +1,15 @@
-use std::{f32, fs, iter, path::PathBuf};
+use std::{fs, iter, path::PathBuf};
 
 use iced::{
     Task,
     clipboard::{self, Content, Kind},
-    widget::operation::{AbsoluteOffset, scroll_by, scroll_to},
+    widget::{
+        operation::{
+            Animation,
+            scrollable::{scroll_by, scroll_to},
+        },
+        scrollable::AbsoluteOffset,
+    },
 };
 use yanet::{OptionExt, Result};
 
@@ -146,7 +152,14 @@ impl Running {
                 let explanation = Explanation::new(&explanation, kind).ok_or_else(|| {
                     "Couldn't parse explanation, please submit a github issue".to_string()
                 });
-                let scroll_to = scroll_to(kind.id(), AbsoluteOffset { x: 0.0, y: 0.0 });
+                let scroll_to = scroll_to(
+                    kind.id(),
+                    AbsoluteOffset {
+                        x: Some(0.0),
+                        y: Some(0.0),
+                    },
+                    Animation::Smooth,
+                );
                 let task = match &explanation {
                     Ok(explanation) => Task::batch(iter::once(scroll_to).chain(
                         (0..explanation.images.len()).map(|idx| {
@@ -175,7 +188,11 @@ impl Running {
 
                 return Ok(scroll_to(
                     ExplanationKind::Comic.id(),
-                    AbsoluteOffset { x: 0.0, y: 0.0 },
+                    AbsoluteOffset {
+                        x: Some(0.0),
+                        y: Some(0.0),
+                    },
+                    Animation::Smooth,
                 ));
             }
             Message::LinkClicked(Link::Url(url)) => {
@@ -264,11 +281,6 @@ impl Running {
                     return Ok(self.open_comic(self.xkcd().num));
                 }
             }
-            Message::LinkHover(Link::Url(url) | Link::ExplainXkcdUrl(url)) => {
-                self.hovered_link = Some(url)
-            }
-            Message::LinkHover(_) => {}
-            Message::HoverEnd => self.hovered_link = None,
             Message::ImageFetchError(num, image, error) if self.xkcd().num == num => {
                 if let Some(handle) = self.image_handles(image) {
                     *handle = Some(Err(error));
@@ -297,14 +309,14 @@ impl Running {
                     x: 0.0,
                     y: -FONT_SIZE,
                 };
-                return Ok(scroll_by(self.scrollable_id(), offset));
+                return Ok(scroll_by(self.scrollable_id(), offset, Animation::Smooth));
             }
             Message::ScrollDown => {
                 let offset = AbsoluteOffset {
                     x: 0.0,
                     y: FONT_SIZE,
                 };
-                return Ok(scroll_by(self.scrollable_id(), offset));
+                return Ok(scroll_by(self.scrollable_id(), offset, Animation::Smooth));
             }
             Message::OpenInBrowser => open::that(format!("https://xkcd.com/{}", self.xkcd().num))?,
             Message::FetchImage(current_xkcd, image) => {
@@ -353,7 +365,9 @@ impl Running {
                 };
 
                 let explanation_url = match kind {
-                    ExplanationKind::Comic => format!("https://explainxkcd.com/{num}"),
+                    ExplanationKind::Comic => {
+                        format!("https://www.explainxkcd.com/wiki/index.php/{num}")
+                    }
                     ExplanationKind::Article => {
                         if let Some(url) = &self.current_entry().article {
                             url.clone()
@@ -413,6 +427,7 @@ impl Running {
                         x: None,
                         y: Some(0.0),
                     },
+                    Animation::Smooth,
                 ));
             }
             Message::ScrollToEnd => {
@@ -422,6 +437,7 @@ impl Running {
                         x: None,
                         y: Some(f32::MAX),
                     },
+                    Animation::Smooth,
                 ));
             }
             Message::Reboot | Message::Run(_) | Message::InitError(_) => {}

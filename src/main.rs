@@ -8,7 +8,7 @@ mod update;
 mod view;
 mod xkcd;
 
-use std::{collections::HashMap, f32, time::Duration};
+use std::{collections::HashMap, f32, iter, time::Duration};
 
 use clap::Parser;
 use iced::{
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
         icon,
         ..Default::default()
     })
-    .font(LUCIDE_FONT_BYTES)
+    .fonts(iter::once(LUCIDE_FONT_BYTES))
     .run()?;
     Ok(())
 }
@@ -130,9 +130,6 @@ enum Message {
 
     HistoryNext,
     HistoryBack,
-
-    LinkHover(Link),
-    HoverEnd,
 
     XkcdFetched(Xkcd),
     LatestXkcdFetched(Xkcd),
